@@ -1,0 +1,79 @@
+/*2/1/2018: Sizor Mohanty*/
+
+
+filename mymail email
+
+
+         to=("David.Denenberg@bedbath.com","Paul.Ochab@bedbath.com","Michelle.Weaver@bedbath.com",
+                  "Lizette.Hartman@bedbath.com",
+              "Lorna.Collins@bedbath.com",
+             "Carolyn.Sheppard@bedbath.com",
+            "Jessica.Hughes@bedbath.com",
+            "Christina.LaPorta@bedbath.com",
+                 "Adele.Laskowski@bedbath.com",
+                 "Milika.Williams@bedbath.com",
+                  "Kellie.Larsen@bedbath.com",
+                  "Stacy.Brinkley@Bedbath.com",
+                  "barrie.carmel@bedbath.com",
+                  "Kristin.Vo@bedbath.com",
+                 "Kim.Napoli@bedbath.com",
+                 "Dan.luck@bedbath.com",
+            "Robert.Caruso@bedbath.com","Nancy.O'Connor@bedbath.com","Louis.Sepe@bedbath.com",
+            "Daniel.Murray@bedbath.com","Marsha.Kheyfets@bedbath.com", "Dario.Pressimone@bedbath.com", "Jim.Halliday@bedbath.com",
+          "Ellen.Buzinky@bedbath.com","Jay.Greenberg@bedbath.com","Ashley.Silva@bedbath.com","Christina.DiBella@buybuybaby.com",
+           "Bill.Nierhoff@bedbath.com","Alex.Ogof@bedbath.com","peter.kalliney@bedbath.com","Jeff.Bertram@bedbath.com","Diana.Avato@buybuybaby.com","Allison.Weitzman@buybuybaby.com","Victoria.Schober@bedbath.com","Pamela.Melchionna@bedbath.com","Ellen.Buzinky@bedbath.com","Marsha.Kheyfets@bedbath.com")
+        cc=("Richa.paul@bedbath.com","Brian.Hansen@bedbath.com","Nancy.Crossen@bedbath.com","sizor.mohanty@bedbath.com","Carmen.Yanazzo@bedbath.com","Darek.Kara@bedbath.com","Xi.Kang@bedbath.com")
+
+
+
+        subject= "Reco File - &mth./&dy./&yr."
+         attach=("&reco_dir/dy_price_&mth.&dy.&yr..zip" )
+        attach= ("&reco_dir/summary_&today..txt")
+                 ;
+
+
+
+run;
+/*  for same day pricing change dates and wording to today  */
+
+%put &today;
+
+data _null_;
+          file mymail;
+       put "Hi Team";
+           put ' ';
+           put "Here's today's file of recommended Dynamic Price changes. We have a total of &total SKUs";
+           put ' ';
+           put "Effective date is &emailtext. ";                
+       put ' ';
+           put ' ';
+           put 'The summary is as follows:';
+           put ' ';
+           put 'SUMMARY';
+           put ' ';
+           put "Current Average Price           $  &cur_a_pr";
+           put "Average Recommended Price       $  &av_rec_pr";
+           put "Percent Change                     &per_chg";
+           put ' ';
+
+           put ' ';
+           put 'Special SKUs                                       SKU Count';
+           put ' ';
+           put "Sold at BBB Min                             &at_bbb_min";
+       put "Sold at less than 1% above BBB_Min          &less_than_one";
+           put "Sold at > 20% above BBB min                 &gr_20";
+           put ' ';
+           put ' ';
+           put ' ';
+           put ' ';
+           put ' ';
+           put ' ';
+           put "Thank You";
+put 'Sizor Mohanty';
+put 'Sr Analyst, Pricing';
+put '650 Liberty Avenue, Union, NJ 07083';
+run;
+
+
+
+
