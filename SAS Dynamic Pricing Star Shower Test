@@ -1,3 +1,5 @@
+
+/*10172017 Sizor*/
 %let pgmpath=/sasdata/data04/price_auto/codes;
 %include "&pgmpath/price_setup.sas";
 
