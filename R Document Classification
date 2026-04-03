@@ -1,0 +1,41 @@
+/* Using knn algorithm for document classfication 2_27_2018 */
+/*http://data-analytics.net/cep/Schedule_files/Textmining%20%20Clustering,%20Topic%20Modeling,%20and%20Classification.htm*/
+
+library(tm)
+library(wordcloud)
+library(Rgraphviz)
+install.packages('Rgraphviz')
+library(RColorBrewer)
+library(wordcloud)
+library(topicmodels)
+install.packages('topicmodels')
+library(plyr)
+library(ggplot2)
+library(RTextTools)
+library(e1071)
+getwd()
+setwd("C:/texts/SKU_Description")
+x<-read.table('V2.txt', header=FALSE, sep='\t')
+head(x)
+y<-x[1:63,]
+y
+source<-VectorSource(y)
+corpus<-Corpus(source)
+corpus <- tm_map(corpus, content_transformer(tolower))
+corpus <- tm_map(corpus, removeNumbers)
+corpus <- tm_map(corpus, removePunctuation)
+corpus <- tm_map(corpus, stripWhitespace)
+corpus <- tm_map(corpus, removeWords, stopwords('english'))
+mat <- DocumentTermMatrix(corpus)
+mat4 <- weightTfIdf(mat)
+mat4 <- as.matrix(mat4)
+norm_eucl <- function(m)
+  m/apply(m,1,function(x) sum(x^2)^.5)
+mat_norm <- norm_eucl(mat4)
+mat_norm
+set.seed(63)# the set.seed() determines the number of iterations
+k <- 7 # number of clusters
+kmeansResult <- kmeans(mat_norm,7)
+prediction<-kmeansResult$cluster[1:63]
+prediction
+write.table(prediction,file="trial3_3.csv",sep=",")
