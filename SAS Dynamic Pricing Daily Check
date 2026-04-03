@@ -1,0 +1,526 @@
+
+/***********************************************************************************
+FILE NAME:              Daily Check if AM file was created.
+CREATION DATE:          09/12/2016
+AUTHOR:                 Sizor/Nancy Crossen
+PURPOSE:                This module will check if the AM repricing job was created successfully.  If not, it will
+                        send an email with the reco file numbers from the PM run of the prior day.
+3/22/2017               Add code for the milestone email   .
+                       Note: when we only have 1 run, the reco run date is not available for the milestone check */
+***********************************************************************************/
+options SASTRACE=',,,d' SASTRACELOC=SASLOG NOSTSUFFIX obs=max mprint symbolgen mlogic
+        stimer fullstimer msglevel=i debug="PREFETCH(unique_mac,2,SEQUENTIAL)"
+        spdedebug='cache_disable'  ;
+
+
+%let pgmpath=/sasdata/data04/price_auto/codes;
+%include "&pgmpath/price_setup.sas";
+
+
+data depts;
+     set stgntz.dy_price_depts;
+/*where dept_live = 'Y';*/
+run;
+
+
+
+%macro checkfile;
+%put &reco_dir./&reco_file_AM.;
+%if %sysfunc(exist(a.reco_report_&mth.&dy.&yr.am)) %then %do;
+     	%put "AM File was created";
+		%let file_check_AM=1;
+	%end;
+    %else %do;
+		/*	%include "&pgmPath/price_test_email.sas";**/
+		%put "Missing AM";   
+	%end;
+
+%if %sysfunc(exist(a.reco_report_&mth_yesterday.&dy_yesterday.&yr_yesterday.pm)) %then %do;
+		 %put "PM File was created";
+		 %let file_check_PM=1;
+	%end;
+    %else %do;
+      	/*%include "&pgmPath/price_test_email.sas";*/
+		%put  "Missing PM";       
+	%end;
+%mend;
+
+
+%checkfile;
+
+%put &reco_file_AM. &reco_file_PM. &file_check_PM &file_check_AM;
+%macro combine_recos     ;
+
+%if &indicator. = AM %then %do;
+
+
+	%if &file_check_AM=0 and &file_check_PM=0 %then %do;
+              %let statement="input files not received for today." ;
+		%put %statement;
+                %abort cancel;
+	%end;
+
+
+	%if &file_check_AM=0 and &file_check_PM=1 %then %do;
+		%put "AM File not created. PM file was created. Use dummy file to create empty AM file ";
+		data  a.reco_report_&mth.&dy.&yr.am;
+                   set a.reco_report_dummy;
+		 run;
+                   %let  file_check_AM=1;
+               	%end;
+
+
+	%if &file_check_AM=1 and &file_check_PM=0 %then %do;
+		%put "PM File not created. AM file was created. Use dummy  file to create empty PM file";
+		 data  a.reco_report_&mth_yesterday.&dy_yesterday.&yr_yesterday.pm;
+                    set a.reco_report_dummy;
+               run;
+           %let  file_check_PM=1;
+	%end;
+
+
+	%if &file_check_AM=1 and &file_check_PM=1 %then %do;
+		%put "Both files were created.";
+	
+    	proc sort data=a.reco_report_&mth_yesterday.&dy_yesterday.&yr_yesterday.pm out =PM_REPORT;
+        	by sku_num ;
+    	proc sort data=a.reco_report_&mth.&dy.&yr.am out =AM_REPORT;
+        	by sku_num;
+    	data final_report;
+        	merge PM_REPORT (in=a)
+         	      AM_REPORT (in=b);
+         	by sku_num;
+         	if a or b;
+			drop cnt;
+    	run;
+
+		proc sort data=final_report ;
+     	   by sku_num;
+		   run;
+  data a.final_reco_report_&mth.&dy.&yr.;
+    set final_report;
+    cnt +1;
+run;
+
+/*   add code to indicate that the PM reco was effective or not    */
+
+/*   get yesterday's PM recos                                      */  
+data PM_RECOS;
+      set tmp00001.reco0;
+	     where reco_run_date = today()-1  and indicator = 'PM';
+run;
+/* get recos where AM price overrides PM   */
+
+data OVERLAY_RECO ;
+      set final_report;
+	     where indicator = 'AM';
+		 keep SKU_num;
+run;
+proc sort data=PM_RECOS;
+  by sku_num;
+run;
+
+proc sort data=overlay_reco;
+    by sku_num;
+run;
+/* These are the recos that need to be reset in the archive.   */
+
+data overlay_reco2;
+     merge overlay_reco (in=a)
+	       pm_recos   (in=b);
+	by sku_num;
+	if a and b;
+	effective_reco = 'N';
+run;
+
+proc sort data=overlay_reco2;
+    by reco_run_date sku_num;
+run;
+proc sort data=tmp00001.reco0    out=sorted_archive;
+   by reco_run_date sku_num;
+run;
+
+data new_archive;
+     merge sorted_archive (in=a)
+	        overlay_reco2 (in=b);
+		by reco_run_date sku_num;
+		if a;
+    if a and b and indicator = 'PM'
+      then do; 
+            effective_reco = 'N';
+           end;
+
+run;
+
+	%end;
+%end;
+
+proc freq data=new_archive;
+     tables effective_reco/missing list;
+run;
+data tmp00001.reco0;
+     set new_archive;
+run;
+
+%mend;
+%combine_recos          ;
+
+
+
+
+%include "&pgmPath/price_summary_report.sas";
+
+
+title;
+ods listing close;
+ods escapechar="*" ;
+
+ods msoffice2k  file="&reco_dir/Dynamic_Price_Reco_Report_&mth.&dy.&yr..xls"
+        style= styles.minimal;
+
+options nodate nonumber;
+proc report data=a.final_reco_report_&mth.&dy.&yr. nowd split='|';
+	column
+cnt
+Multi_SKU_Web_Product_ID
+Collection_Num  
+SKU_Num
+SKU_Description
+Department_cd   
+Current_Web_Price 
+Dynamic_Price_Recommendation
+Pct_Change_Price 
+Pct_Diff  
+New_Markup   
+Seven_Day_Moving_Avg 
+Three_Day_Moving_Avg 
+Current_Comp_Price 
+Comp_Reference_Price 
+BBB_Min_Price  
+Chain_Retail_Price
+Regular_Retail 
+Chain_Cost   
+Coupon_Rate   
+Profit_Buffer  
+Freight_Rate  
+Vendor_Name 
+Vendor_Code
+Markup_Above_BBB_Min 
+Current_Variance  
+DP_DY_BUS_RSNCD  
+Code_Path
+INDICATOR
+	;
+
+
+	define cnt      / display '';
+	define Multi_SKU_Web_Product_ID  / display 'Multi|SKU_Web|Product|ID';
+	define Collection_Num    / display;
+	define SKU_Num     / style(column)=[cellwidth=1in];
+	define SKU_Description    / style(column)=[cellwidth=6in];
+	define Department_cd    / display 'Dept';
+	define Current_Web_Price   / display 'Current|Web_Price';
+	define Dynamic_Price_Recommendation / display 
+	 'Dynamic|Price|Recommen|dation';
+	define Pct_Change_Price   / style(column)=[cellwidth=.7in] 
+	 right 
+	 '% Chg|(DyPr-|CurrPr)/|Curr Pr';
+	define Pct_Diff     / 
+	 right 
+	 style(column)=[cellwidth=1in]
+	 '% Diff|(BBB DyPr-|AmzPr/|BBB DyPr)';
+	define New_Markup    / display
+	 'New Markup|(DyPr-ChainCost)/|DyPr';
+	define Seven_Day_Moving_Avg   / display
+	 '7 Day|Moving|Avg';
+	define Three_Day_Moving_Avg   / display
+	 '3 Day|Moving|Avg';
+	define Current_Comp_Price   / display
+	 'Current|Competitor|Price';
+	define Comp_Reference_Price  / display
+	 'Competitor|Reference|Price';
+	define BBB_Min_Price    / display
+	 'BBB_Min|Price';
+	define Chain_Retail_Price   / display
+	 'Chain|Retail|Price';
+	define Regular_Retail   / display
+	 'Regular|Price';
+	define Chain_Cost    / display
+	 'Chain|Cost';
+	define Coupon_Rate    / display
+	 'Coupon|Rate';
+	define Profit_Buffer    / display
+	 'Profit|Buffer';
+	define Freight_Rate    / display
+	 'Freight Rate|(as a %|of Cost)';
+	define Vendor_Name    / style(column)=[cellwidth=3in];
+	define Vendor_Code    / display
+	 'Vendor|Code';
+	define Markup_Above_BBB_Min   / display
+	 'Markup Above|BBB Min|(DyPrice-BBB Min/|DyPr)';
+	define Current_Variance   / display
+	 'Current Variance|((BBB-Amazon)|/BBB)';
+	define DP_DY_BUS_RSNCD    / display 'DP_DY|BUS|RSNCD';
+	define Code_Path   / display 'Code|Path';
+
+	compute cnt;
+	 if mod(cnt,2)=0 then 
+	 call define(_row_,"style","style={background=lightgray}");
+	endcomp;
+
+	compute Dynamic_Price_Recommendation;
+	 call define(_col_,"style","style={background=LIYBR}");
+	endcomp;
+        define indicator /display
+         'Pricing|Run';
+run;
+	
+
+
+
+ods html close;
+ods listing;
+
+ods package(newzip) open nopf;
+ods package(newzip) add file="&RECO_DIR./Dynamic_Price_Reco_Report_&mth.&dy.&yr..xls" ;
+
+ods package(newzip) publish archive 
+  properties(
+   archive_name="dy_price_&mth.&dy.&yr..zip" 
+   archive_path="&RECO_DIR."    
+  );
+ods package(newzip) close;
+
+
+
+/*Send Email Notification - only at AM run */
+
+
+
+%macro send_email_notification ;
+%if &indicator. = AM %then
+  %do;
+  %include "&pgmPath/price_prod_email.sas";
+    
+  %end;
+%mend;
+%send_email_notification;
+
+/* Create separate report for the digital Marketing team  */  
+
+ods listing close;
+ods escapechar="*" ;
+
+ods msoffice2k  file="&reco_dir/Digital_Marketing_Report_&mth.&dy.&yr..xls"
+        style= styles.minimal;
+
+options nodate nonumber;
+proc report data=a.final_reco_report_&mth.&dy.&yr. nowd split='|';
+	column
+
+SKU_Num
+SKU_Description
+Department_cd   
+Current_Web_Price 
+Dynamic_Price_Recommendation
+Pct_Change_Price 
+Seven_Day_Moving_Avg 
+Three_Day_Moving_Avg 
+Current_Comp_Price 
+Comp_Reference_Price 
+DP_DY_BUS_RSNCD  
+INDICATOR
+	;
+
+
+	
+	define SKU_Num     / style(column)=[cellwidth=1in];
+	define SKU_Description    / style(column)=[cellwidth=6in];
+	define Department_cd    / display 'Dept';
+	define Current_Web_Price   / display 'Current|Web_Price';
+	define Dynamic_Price_Recommendation / display 
+	 'Dynamic|Price|Recommen|dation';
+	define Pct_Change_Price   / style(column)=[cellwidth=.7in] 
+	 right 
+	 '% Chg|(DyPr-|CurrPr)/|Curr Pr';
+	define Seven_Day_Moving_Avg   / display
+	 '7 Day|Moving|Avg';
+	define Three_Day_Moving_Avg   / display
+	 '3 Day|Moving|Avg';
+	define Current_Comp_Price   / display
+	 'Current|Competitor|Price';
+	define Comp_Reference_Price  / display
+	 'Competitor|Reference|Price';
+	define DP_DY_BUS_RSNCD    / display 'DP_DY|BUS|RSNCD';
+	define Code_Path   / display 'Code|Path';
+
+	
+
+	compute Dynamic_Price_Recommendation;
+	 call define(_col_,"style","style={background=LIYBR}");
+	endcomp;
+        define indicator /display
+         'Pricing|Run';
+run;
+	
+
+
+
+ods html close;
+ods listing;
+
+ods package(newzip) open nopf;
+ods package(newzip) add file="&reco_dir/Digital_Marketing_Report_&mth.&dy.&yr..xls" ;
+
+ods package(newzip) publish archive 
+  properties(
+   archive_name="dy_digital_rpt_&mth.&dy.&yr..zip" 
+   archive_path="&RECO_DIR."    
+  );
+ods package(newzip) close;
+
+
+
+/*Send Email Notification - only at AM run */
+
+
+
+%macro send_email_notification_digital ;
+%if &indicator. = AM %then
+  %do;
+  %include "&pgmPath/price_digital_email.sas";
+    
+  %end;
+%mend;
+%send_email_notification_digital;
+
+
+
+
+ /*  if we're running the PM run, save the numbers needed for the summary report in case we don't process the AM file and need to send the PM stats in the email  */
+
+
+/*  Add code for milestone email   */
+
+PROC SQL;
+   CREATE TABLE WORK.reco_count AS
+   SELECT count(*) as reco_count 
+      FROM a.final_reco_report_&mth.&dy.&yr. ;
+
+QUIT;
+
+proc sql noprint;
+    select reco_count
+	  into :today_reco
+	   from work.reco_count;
+quit;
+%put today_reco &today_reco;
+/* get total recos for today  */
+
+data all_recos;
+     set new_archive;
+	    where (indicator = 'PM' and reco_run_date = &today2-1) or
+		       (indicator = 'AM' and reco_run_date = &today2);
+run;
+
+
+data _null_;
+     if 0 then set WORK.all_recos nobs=n;
+     call symput('reco_count_oneday',n);
+     stop;
+run;
+%put reco_count_oneday &reco_count_oneday.;
+
+
+
+/* get total recos in the archive */
+data  total_sku_cnt (keep=sku_num reco_run_date indicator effective_reco);
+	 set    new_archive;
+run;
+data _null_;
+     if 0 then set WORK.total_sku_cnt nobs=n;
+     call symput('total_all',n);
+     stop;
+run;
+data eff_sku_cnt;
+     set total_sku_cnt;
+	       where effective_reco='Y';
+		   
+run;
+data _null_;
+     if 0 then set WORK.eff_sku_cnt nobs=n;
+     call symput('total_eff',n);
+     stop;
+run;
+%put &total_eff. &total_all.;
+
+data _null_;
+      reco_count = &today_reco;
+     reco_count_oneday = &reco_count_oneday.;
+     remainder=mod(&total_eff.,1000000);
+	 quotient=int(&total_eff./1000000);
+	 call symputx('rem_eff',remainder);
+	 call symputx('quo_eff',quotient);
+	  eff_diff = remainder-reco_count;
+	 remainder=mod(&total_all.,1000000);
+	 quotient=int(&total_all./1000000);
+	 call symputx('rem_all',remainder);
+	 call symputx('quo_all',quotient);
+	
+	 all_diff=remainder-reco_count_oneday;
+	 call symputx('all_diff',all_diff);
+	 call symputx('eff_diff',eff_diff);
+	 all_ind = 0;
+	 eff_ind = 0;
+	 if all_diff < 0 then all_ind = 1;
+	 if eff_diff < 0 then eff_ind = 1;
+     call symputx('all_ind',all_ind);
+	 call symputx('eff_ind',eff_ind);
+	 	 
+run;
+%put rem_eff &rem_eff. quo_eff &quo_eff. eff_diff &eff_diff. 
+     rem_all &rem_all.  quo_all &quo_all. all_diff &all_diff. 
+     today_reco_cnt &today_reco. eff_ind &eff_ind. all_ind &all_ind. ;
+
+%macro maileff;
+        data _null_;
+        FILENAME MYMAIL EMAIL
+        to= ("Nancy.Crossen@bedbath.com","sizor.mohanty@bedbath.com","Brian.Hansen@bedbath.com"
+              ,"Carmen.Yanazzo@bedbath.com","Xi.Kang@bedbath.com")
+        subject= "Effective Reco Milestone &today_wf.";
+        file mymail;
+        put " ";
+        put "As of today, &today_wf., we have &total_eff. effective recos ";
+        put " ";
+        run;
+%mend maileff;
+%macro mailall;
+        data _null_;
+        FILENAME MYMAIL EMAIL
+        to= ("Nancy.Crossen@bedbath.com","sizor.mohanty@bedbath.com","Brian.Hansen@bedbath.com"
+              ,"Carmen.Yanazzo@bedbath.com","Xi.Kang@bedbath.com")
+        subject= "Total Reco Milestone &today_wf.";
+        file mymail;
+        put " ";
+        put "As of today, &today_wf., we have processed &total_all total recos ";
+        put " ";
+        run;
+%mend mailall;
+
+%macro sendme;
+        %if &all_ind = 0 %then %do;
+                                %end;
+                                %else %do;
+                                        %mailall
+                                %end;
+		%if &eff_ind = 0 %then %do;
+                                %end;
+                                %else %do;
+                                        %maileff
+                                %end;
+%mend sendme;
+
+%sendme;
+
+
+ 
