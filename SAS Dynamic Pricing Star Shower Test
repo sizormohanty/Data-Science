@@ -1,0 +1,189 @@
+%let pgmpath=/sasdata/data04/price_auto/codes;
+%include "&pgmpath/price_setup.sas";
+
+%include "&pgmpath/price_import_files.sas";
+
+
+
+/* Netezza */
+
+
+libname Xi '/sasdata/sasnav/OURSAS/PRICING/Xi/';
+libname Arc '/sasdata/data07/PricingMgr/Archive/Price_Archive';
+libname LTL17 '/sasdata/sasnav/OURSAS/PRICING/Xi/LTL17';
+libname StarS '/sasdata/sasnav/OURSAS/PRICING/Xi/StarS';
+
+OPTIONS SASTRACE=',,,d' SASTRACELOC=SASLOG NOSTSUFFIX /*mprint symbolgen
+   mlogic */ stimer fullstimer msglevel=i debug="PREFETCH(unique_mac,2,SEQUENTIAL)"
+   spdedebug='cache_disable' ;
+
+OPTIONS obs=max /*noreplace*/;
+
+options SQLGENERATION = (DBMS);
+proc options option=sasuser;
+run;
+
+
+
+
+data _null_;
+call symput('Tdate', put(today(), date7.));
+run;
+%put &Tdate; 
+
+
+
+
+
+proc sql; select max(Effective_Date) into : Ef_TDate from Arc.DP_Recos; quit;
+%put &Ef_TDate; 
+
+%let NEf_TDate = %str(%')%sysfunc(intnx(day,"&Tdate."d,0),YYMMDD10.)%str(%');
+%put &NEf_TDate;
+
+
+
+
+proc sql;
+create table StarS.StarS_Reco_&Tdate as
+select distinct 
+a.Multi_SKU_Web_Product_ID,
+a.Collection_Num,
+a.SKU_num,
+a.SKU_Description,
+a.Department_CD,
+a.Current_Web_Price format dollar10.2,
+a.Dynamic_Price_Recommendation format dollar10.2,
+a.Seven_Day_Moving_Avg format dollar10.2,
+a.Three_Day_Moving_Avg format dollar10.2,
+a.Current_Comp_Price format dollar10.2,
+a.Comp_Reference_Price format dollar10.2,
+a.BBB_Min_Price format dollar10.2,
+a.Chain_Retail_Price format dollar10.2,
+a.Regular_Retail format dollar10.2,
+a.Chain_Cost format dollar10.2,
+a.Vendor_Name,
+a.DP_DY_BUS_RSNCD,
+a.Effective_Date,
+a.End_Date,
+a.indicator,
+a.Code_Path,
+a.SKU_Sale_Type,
+case when (a.Dynamic_Price_Recommendation < a.Chain_cost and a.effective_reco ='Y') then 'Y'
+	else 'N'
+end as BelowCost,  
+case when (b.BBBY_Web_Offered_IND = 'Y' and b.BBBY_Web_DIsable_IND = 'N' 
+		and b.BBBY_WEB_ENABLE_DT not = . AND b.BBBY_WEB_OFFERED_DT not = . ) then 'Y'
+	else 'N'
+end as On_Site_Today
+from Arc.DP_Recos a
+left join PIM_FILE b 
+	on a.SKU_Num = b.Item_SKU_Num
+where a.code_path = '35' and a.effective_date=&Ef_TDate and a.effective_reco = 'Y';
+quit;
+
+
+
+proc sql;
+create table StarS.StarS_BelowCost_&Tdate as
+select distinct *
+from StarS.StarS_Reco_&Tdate
+where BelowCost = 'Y'
+order by SKU_num;
+quit;
+
+
+
+
+
+
+
+/* Trying Export Data into Excel */
+
+/* Export Reco File- ADD BACK FROM HERE DOWN  */
+%let output_dir=/sasdata/sasnav/OURSAS/PRICING/Xi/Output;
+/*
+
+%let today=%sysfunc(today(),yymmddn8.);
+%let now=%sysfunc(time(),tod.);
+%let time=%sysfunc(compress(&now,':'));
+%put &time;
+%let outfil1=StarS_BelowCost_&Tdate..xls;
+%put &outfil1;
+*/
+
+proc export data=StarS.StarS_BelowCost_&Tdate
+outfile="/sasdata/sasnav/OURSAS/PRICING/Xi/Output/StarS_BelowCost_&Tdate..xls"
+dbms=tab replace; 
+*sheet="StarS_BelowCost_&Tdate";
+run;
+
+
+
+proc sql; select count(distinct SKU_Num) into: N_Rc from StarS.StarS_Reco_&Tdate; quit; 
+%put &N_Rc;
+
+
+proc sql; select count(distinct SKU_Num) into: N_BC from StarS.StarS_BelowCost_&Tdate
+where BelowCost = 'Y' and On_Site_Today = 'Y'; quit; 
+%put &N_BC;
+
+
+
+
+
+/* Email */
+
+%macro mailall;
+
+        data _null_;
+        FILENAME MYMAIL EMAIL
+        to=("GMinchow@bedbath.com", "Diana.FonsecaWilkinson@bedbath.com")
+        cc=("Barrie.Carmel@bedbath.com","Brian.Hansen@bedbath.com","Carmen.Yanazzo@bedbath.com","Xi.Kang@bedbath.com","sizor.mohanty@bedbath.com",
+           "nancy.crossen@bedbath.com" )
+        subject= "Prices Below Cost:: Star Shower Test - &mth./&dy./&yr."
+        attach=("/sasdata/sasnav/OURSAS/PRICING/Xi/Output/StarS_BelowCost_&Tdate..xls" )
+         ;
+        file mymail;
+        put "Hi Team";
+           put ' ';
+           put "Of the &N_Rc DP price recommendations we processed today for the StarShower test.";
+           put ' ';
+           put "&N_BC SKUs are priced below our cost and on site. We recommend excluding these SKUs from the 'WORRY FREE PRICING' test. ";                
+       	   put ' ';          
+           put 'In the attached file, column Q (DP_DY_BUS_RSNCD) gives information about which competitor price we used for the price matching.';
+           put ' ';
+           put "Column Q is a 2 letter code, that can be interpreted as follows:";
+		   put "First letter of the code (A , O, W, Y ) represents the competitor with the lowest price.  A = Amazon, W = Walmart, O = Overstock, Y = Wayfair. ";
+		   put "Second letter of the code (H , L) gives us an indication on how the competitor price is compared to our price. L = Lower,  H = Higher.";
+		   put ' ';
+           put ' ';
+
+		put "Thank You";
+		put 'Pricing Team';
+		put 'dynamicpricing@bedbath.com';
+		put '650 Liberty Avenue, Union, NJ 07083';
+
+        run;
+%mend mailall;
+
+
+
+%macro sendme;
+        %if &N_BC = 0 %then %do;
+                            %end;
+        %else %do;
+              %mailall
+        %end;
+%mend sendme;
+
+%sendme;
+
+
+
+
+
+
+
+
+
