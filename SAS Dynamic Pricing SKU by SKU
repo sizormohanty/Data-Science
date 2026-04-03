@@ -1,0 +1,1084 @@
+
+/*12/18/2017*/
+
+OPTIONS  SASTRACE=',,,sa' SASTRACELOC=SASLOG NOSTSUFFIX /*mprint symbolgen
+   mlogic */ stimer fullstimer msglevel=i debug="PREFETCH(unique_mac,2,SEQUENTIAL)"
+   spdedebug='cache_disable' ;
+
+/*Calculating freight Rate*/
+
+/*Common SKUs*/
+PROC SQL;
+   CREATE TABLE WORK.Common_SKUs AS 
+   SELECT DISTINCT 
+		t2.DP_STORE, 
+        t2.DP_SKU, 
+        t2.DP_DEPARTMENT, 
+
+
+        t2.DP_SUB_DEPARTMENT, 
+        t2.DP_CLASS, 
+        t2.DP_VENDOR, 
+        (t1.Gross_Frt_as_a_per_of_merch) FORMAT=12.2 LABEL="SKU_Freight" AS SKU_Freight
+   FROM WORK.Freight_Rate t1, 
+			WORK.REMOVE_PROMO_SKUS t2
+   WHERE (t1.SKU = t2.DP_SKU);
+QUIT;
+PROC SQL;
+   CREATE TABLE WORK.Uncommon_SKUs AS 
+   SELECT DISTINCT t2.DP_STORE, 
+          t2.DP_SKU, 
+          t2.DP_DEPARTMENT, 
+          t2.DP_SUB_DEPARTMENT, 
+          t2.DP_CLASS, 
+          t2.DP_VENDOR
+   FROM WORK.Freight_Rate t1
+   RIGHT JOIN WORK.REMOVE_PROMO_SKUS t2 ON  (t1.SKU = t2.DP_SKU)
+   WHERE t1.SKU = .;
+QUIT;
+
+PROC SQL;
+   CREATE TABLE WORK.VDC_Freight_Costs AS 
+   SELECT DISTINCT t1.Vendor_Number, 
+            (AVG(t1.Gross_Frt_as_a_per_of_merch)) FORMAT=BEST12. AS AVG_Gross_Frt_per_of_Merch    
+   FROM WORK.DISTINCT_PIM t2
+   INNER JOIN WORK.Freight_Rate t1 ON (t2.ITEM_SKU_NUM = t1.SKU)
+   GROUP BY t1.Vendor_Number;
+QUIT;
+
+PROC SQL;
+   CREATE TABLE WORK.Distinct_Classes AS 
+   SELECT DISTINCT (put(t1.department_cd,3.)||put(t1.sub_department_cd,3.)||put(t1.class_cd,3.)) LABEL=
+                     "Distinct_Classes" AS Distinct_Classes, 
+            (AVG(t1.Gross_Frt_as_a_per_of_merch)) FORMAT=BEST12. AS AVG_Gross_Frt_per_of_Merch            
+   FROM WORK.Freight_Rate    t1
+   GROUP BY (CALCULATED Distinct_Classes);
+QUIT;
+
+PROC SQL;
+   CREATE TABLE WORK.Distinct_Classes_Uncommon(label="Distinct_Classes_Uncommon") AS 
+   SELECT DISTINCT t1.DP_STORE, 
+          t1.DP_SKU, 
+          t1.DP_DEPARTMENT, 
+          t1.DP_SUB_DEPARTMENT, 
+          t1.DP_CLASS, 
+          t1.DP_VENDOR, 
+          (put(t1.DP_DEPARTMENT,3.)||put(t1.DP_SUB_DEPARTMENT,3.)||put(t1.DP_CLASS,3.)) LABEL="Distinct" AS Distinct
+   FROM WORK.UNCOMMON_SKUS t1;
+QUIT;
+PROC SQL;
+   CREATE TABLE WORK.Freight_by_Class(label="Freight_by_Class") AS 
+   SELECT DISTINCT t1.DP_STORE, 
+          t1.DP_SKU, 
+          t1.DP_DEPARTMENT, 
+          t1.DP_SUB_DEPARTMENT, 
+          t1.DP_CLASS, 
+          t1.DP_VENDOR, 
+          (0) FORMAT=12.2 LABEL="Avg_Vendor" AS Avg_Vendor,
+          (t2.AVG_Gross_Frt_per_of_Merch ) FORMAT=12.2 LABEL="Avg_Class" AS Avg_Class
+   FROM WORK.DISTINCT_CLASSES_UNCOMMON t1
+   INNER JOIN WORK.DISTINCT_CLASSES t2 ON (t1.Distinct = t2.Distinct_Classes);
+QUIT;
+
+PROC SQL;
+   CREATE TABLE WORK.Non_Class_SKUs(label="Non-Class_SKUs") AS 
+   SELECT DISTINCT t1.DP_STORE, 
+          t1.DP_SKU, 
+          t1.DP_DEPARTMENT, 
+          t1.DP_SUB_DEPARTMENT, 
+          t1.DP_CLASS, 
+          t1.DP_VENDOR, 
+          t1.Distinct, 
+          t2.AVG_Gross_Frt_per_of_Merch               
+      FROM WORK.DISTINCT_CLASSES_UNCOMMON t1
+           LEFT JOIN WORK.DISTINCT_CLASSES t2 ON (t1.Distinct = t2.Distinct_Classes)
+      WHERE t2.Distinct_Classes = '';
+QUIT;
+
+PROC SQL;
+   CREATE TABLE WORK.Freight_by_Class(label="Freight_by_Class") AS 
+   SELECT DISTINCT t1.DP_STORE, 
+          t1.DP_SKU, 
+          t1.DP_DEPARTMENT, 
+          t1.DP_SUB_DEPARTMENT, 
+          t1.DP_CLASS, 
+          t1.DP_VENDOR, 
+          (0) FORMAT=12.2 LABEL="Avg_Vendor" AS Avg_Vendor, 
+          (t2.AVG_Gross_Frt_per_of_Merch) FORMAT=12.2 LABEL="Avg_Class" AS Avg_Class
+   FROM WORK.DISTINCT_CLASSES_UNCOMMON t1
+   INNER JOIN WORK.DISTINCT_CLASSES t2 ON (t1.Distinct = t2.Distinct_Classes);
+QUIT;
+
+PROC SQL;
+   CREATE TABLE WORK.Non_Class_Vendor_Freight(label="Non-Class_SKUs_Vendors") AS 
+   SELECT DISTINCT t1.DP_STORE, 
+          t1.DP_SKU, 
+          t1.DP_DEPARTMENT, 
+          t1.DP_SUB_DEPARTMENT, 
+          t1.DP_CLASS, 
+          t1.DP_VENDOR, 
+          (t2.AVG_Gross_Frt_per_of_Merch)  FORMAT=12.2 LABEL="Avg_Vendor" AS Avg_Vendor, 
+          (0) FORMAT=12.2 LABEL="Avg_Class" AS Avg_Class
+   FROM WORK.VDC_FREIGHT_COSTS t2
+   INNER JOIN WORK.NON_CLASS_SKUS t1 ON (t2.Vendor_Number = t1.DP_VENDOR);
+QUIT;
+
+PROC SQL;
+	CREATE TABLE WORK.Freight_by_Class_vendor AS 
+	SELECT * FROM WORK.NON_CLASS_VENDOR_FREIGHT
+ 	OUTER UNION CORR 
+	SELECT * FROM WORK.FREIGHT_BY_CLASS;
+Quit;
+
+PROC SQL;
+   CREATE TABLE WORK.Freight_Uncommon_SKUs(label="Freight_Uncommon_SKUs") AS 
+   SELECT DISTINCT t1.DP_STORE, 
+          t1.DP_SKU, 
+          t1.DP_DEPARTMENT, 
+          t1.DP_SUB_DEPARTMENT, 
+          t1.DP_CLASS, 
+          t1.DP_VENDOR, 
+          (Case When t1.Avg_Vendor GT 0 AND t1.Avg_Class GT 0 Then (t1.Avg_Vendor+t1.Avg_Class)/2
+                When t1.Avg_Vendor EQ 0 AND t1.Avg_Class GT 0 Then (t1.Avg_Class)
+           		Else t1.Avg_Vendor End) FORMAT=12.2 LABEL="SKU_Freight" AS SKU_Freight
+   FROM WORK.FREIGHT_BY_CLASS_VENDOR t1;
+QUIT;
+
+PROC SQL;
+	CREATE TABLE WORK.SKU_Freight AS 
+	SELECT * FROM WORK.COMMON_SKUS
+	OUTER UNION CORR 
+	SELECT * FROM WORK.FREIGHT_UNCOMMON_SKUS;
+Quit;
+
+
+
+
+
+
+
+
+/****** SM - SKU by SKu Coupon Rate Start ************************/
+
+data WORK.coupon_rate;
+	set WORK.coupon_rate;
+	dp_sku_class=put(department_cd,3.)||"-"||put(sub_department_cd,3.)||"-"||put(class_code,3.);
+	dp_dept_vendor=put(department_cd,3.)||"-"||cats(put(vendor_cd,8.));
+run;
+
+data WORK.remove_promo_skus;
+	set WORK.remove_promo_skus;
+	dp_sku_class=put(dp_department,3.)||"-"||put(dp_sub_department,3.)||"-"||put(dp_class,3.);
+	dp_dept_vendor=put(dp_department,3.)||"-"||cats(put(dp_vendor,8.));
+run;
+
+/*finding all values between the 10th and 90th percentile for class*/
+
+proc means data=WORK.coupon_rate mean sum P10 P90 N noprint missing;
+	var coupon_rate;
+	class dp_sku_class;
+	output out=WORK.coupon_rate_class (drop=_type_ _freq_) 
+	P10=P10_Class P90=P90_Class Mean=mean_Class;
+run;
+
+
+proc sql;
+	create table WORK.coupon_rate_class as
+	select distinct t1.dp_sku_class, 
+				avg(t1.coupon_rate) as Mean_class
+	from WORK.coupon_rate t1
+	left join WORK.coupon_rate_class t2 on t2.dp_sku_class=t1.dp_sku_class
+	where t2.P10_Class<t1.coupon_rate<t2.P90_Class and t2.P10_Class NE .
+	group by t1.dp_sku_class;
+quit;
+
+
+/*finding all values between the 10th and 90th percentile for vendor*/
+proc means data=WORK.coupon_rate mean sum P10 P90 N noprint missing;
+	var coupon_rate;
+	class dp_dept_vendor;
+	output out=coupon_rate_vendor (drop=_type_ _freq_) 
+	P10=P10_vendor P90=P90_vendor Mean=mean_vendor;
+run;
+proc sql;
+	create table WORK.coupon_rate_vendor as
+	select distinct t1.dp_dept_vendor, 
+				avg(t1.coupon_rate) as Mean_vendor
+	from coupon_rate t1
+	left join WORK.coupon_rate_vendor t2 on t2.dp_dept_vendor=t1.dp_dept_vendor
+	where t2.P10_vendor<t1.coupon_rate<t2.P90_vendor and t2.P10_vendor NE .
+group by t1.dp_dept_vendor;
+quit;
+
+proc sql;
+create table remove_promo_SKU as
+select DISTINCT t1.DP_STORE, 
+          t1.DP_DEPARTMENT, 
+          t1.DP_SUB_DEPARTMENT, 
+          t1.DP_CLASS, 
+          t1.DP_VENDOR, 
+          t1.MS_WPID, 
+          t1.DP_SKU, 
+          t1.SKU_Description, 
+          t1.DP_CHAIN_RETAIL, 
+          t1.DP_CHAIN_COST, 
+          t1.DP_REG_PRICE, 
+          t1.DP_CUR_WEB_PRICE, 
+          t1.DP_PROMO_PRC, 
+          t1.DP_PROMO_STRT_DT, 
+          t1.DP_PROMO_END_DT, 
+          t1.DP_NEXT_PROMO_RSNCD,
+          T1.DP_NEXT_PROMO_STRDT,
+          t1.DP_NEXT_PROMO_ENDDT,
+          t1.BBB_PRICE_AMT, 
+          t1.Reference_Price,
+		  t1.Reference_Price_Competitor, 
+          t1.SCRPD_DATE, 
+          t1.MA_3, 
+          t1.MA_7, 
+          t1.AFLT_PRICE_AMT,
+		  t1.AFLT_PRICE_AMT_Competitor, 
+		  t1.PMR_AFLT_WEB_NM,
+          t1.Overall_Freight, 
+		  (Case when t1.overall_coupon_rate = 0 then 0
+	  		when t2.coupon_rate<>. then t2.coupon_rate
+      		when (t2.coupon_Rate=. and t3.mean_class<>.) then t3.mean_class
+	  		when (t2.coupon_Rate=. and t3.mean_class=. and t4.mean_vendor<>.) then t4.mean_vendor 
+	  		when (t2.coupon_Rate=. and t3.mean_class=. and t4.mean_vendor=.) then t1.overall_coupon_rate
+      	  end) as Overall_coupon_rate,
+	  	  t1.overall_coupon_rate as overall_coupon_rate1,
+	  	  t2.Coupon_rate,
+	  	  t3.mean_class,
+	  	  t4.mean_vendor,
+          t1.Overall_Break_Even, 
+          t1.BUYER_NUMBER, 
+          t1.BUYER_NAME, 
+          t1.DP_SELL_BUY_FAC, 
+          t1.Current_Promo_Flag, 
+          t1.Upcoming_Promo_Filter, 
+          t1.Regular_Promo_Filter, 
+          t1.DP_REG_STRT_DT, 
+          t1.COLLECTION_ITEM_SKU_NUM,
+		  t1.LTL_IND,
+		  t1.MAP_PRC_AMT,
+		  t1.Code_Path,
+	 	  t1.PIM_BRAND_CD,
+	 	  t1.SKU_TYPE,
+	   	  t1.PIM_BRAND_NAME,
+	   	  t1.DP_VENDOR_NAME,
+          t1.Reference_Price_Competitor,
+	  	  t1.AFLT_PRICE_AMT_Competitor,
+		  t1.No_Online_Inv_Flag,
+		  t1.MAP_FLAG,
+		  t1.EM_FLAG,
+		  t1.VDC_WEB_FLAG,
+		  t1.Coll_excl_Flag,
+		  t1.DP_CHAIN_STATUS,
+		  t1.Chain_Status_Flag,
+  		  t1.VDC_IND, 
+	      t1.Web_Only_Ind, 
+	      t1.In_Store_Ind,
+		  t1.SKU_sale_Type,
+		  t1.dp_sku_class,
+		  t1.dp_dept_vendor
+from remove_promo_skus t1
+left join coupon_rate t2 on (t1.dp_sku=t2.sku_num)
+left join coupon_rate_class t3 on (t1.dp_sku_class=t3.dp_sku_class)
+left join coupon_rate_vendor t4 on (t1.dp_dept_vendor=t4.dp_dept_vendor);
+quit;
+
+/************SM--SKU  by SKU Coupon Rate End *****************/
+
+PROC SQL;
+   CREATE TABLE WORK.BBB_Min AS 
+   SELECT DISTINCT t1.DP_STORE, 
+          t1.DP_DEPARTMENT, 
+          t1.DP_SUB_DEPARTMENT, 
+          t1.DP_VENDOR, 
+          t1.DP_CLASS, 
+          t1.MS_WPID, 
+          t1.DP_SKU, 
+          t1.SKU_Description, 
+          t1.DP_CHAIN_RETAIL, 
+          t1.DP_CHAIN_COST, 
+          t1.DP_REG_PRICE, 
+          t1.DP_CUR_WEB_PRICE,
+          t1.BBB_PRICE_AMT, 
+          (Case When t1.Reference_Price GT t1.DP_CUR_WEB_PRICE Then
+                (Case When t1.DP_CUR_WEB_PRICE<=25 Then 0.0 
+                      When (t1.DP_CUR_WEB_PRICE between 25.01 and 50) Then 0.0
+                      When (t1.DP_CUR_WEB_PRICE between 50.01 and 100) Then 0.0
+                      When (t1.DP_CUR_WEB_PRICE between 100.01 and 200) Then 0.0
+                      When (t1.DP_CUR_WEB_PRICE between 200.01 and 300) Then 0.0
+                      When (t1.DP_CUR_WEB_PRICE between 300.01 and 400) Then 0.0
+                      Else 0.0 End)                   
+            	When t1.Reference_Price LE t1.DP_CUR_WEB_PRICE Then
+                  (Case When t1.DP_CUR_WEB_PRICE<=25 Then 0.0 
+                       When (t1.DP_CUR_WEB_PRICE between 25.01 and 50) Then 0.0
+                       When (t1.DP_CUR_WEB_PRICE between 50.01 and 100) Then 0.0
+                       When (t1.DP_CUR_WEB_PRICE between 100.01 and 200) Then 0.0
+                       When (t1.DP_CUR_WEB_PRICE between 200.01 and 300) Then 0.0
+                       When (t1.DP_CUR_WEB_PRICE between 300.01 and 400) Then 0.0
+                       Else 0.0 End)
+				End) FORMAT=5.3 LABEL="Competition_Delta" AS Competition_Delta, 
+          t1.Reference_Price, 
+          t1.MA_3, 
+          t1.MA_7, 
+          t1.AFLT_PRICE_AMT, 
+          t1.Overall_Coupon_Rate, 
+          t1.Overall_Break_Even, 
+          (Case /*when t1.code_path = '11' then 0 */
+				When t1.code_path = '7' then 0
+				when t2.SKU_Freight is NULL then t1.Overall_Freight
+				else t2.SKU_Freight end) as SKU_Freight,
+          t1.BUYER_NUMBER, 
+          t1.BUYER_NAME, 
+          t1.DP_SELL_BUY_FAC, 
+          (case when t1.code_path = '7' then 
+		            t1.DP_CHAIN_COST*(t1.DP_SELL_BUY_FAC)*(1+0)/(1-(0+0.15+0))
+				when t1.code_path = '12' and t1.MAP_PRC_AMT>0.01 then   
+					t1.MAP_PRC_AMT
+				when t2.SKU_Freight is NULL then 
+					t1.DP_CHAIN_COST*(t1.DP_SELL_BUY_FAC)*(1+t1.Overall_Freight)/
+					(1-(t1.Overall_Coupon_Rate+t1.Overall_Break_Even+0))
+			    else
+			 		t1.DP_CHAIN_COST*(t1.DP_SELL_BUY_FAC)*(1+t2.SKU_Freight)/
+					(1-(t1.Overall_Coupon_Rate+t1.Overall_Break_Even+0))
+		   		end) FORMAT=10.2 LABEL="BBB_Min" AS BBB_Min,
+          (&Reco_start_date) format=yymmdd10.2 LABEL="DP_DY_PRICE_STRTS" AS DP_DY_PRICE_STRTS, 
+
+		(case when (t1.code_path in ('11','53', '35', '12')) then (&Reco_start_date)
+			else (&Reco_end_date) 
+			end) FORMAT=YYMMDDD10.2 LABEL="DP_DY_PRICE_END" AS DP_DY_PRICE_END,
+
+          (t1.SCRPD_DATE) FORMAT=DATETIME25.6 LABEL="Scrape_Dt" AS Scrape_Dt, 
+
+		(case when (t1.code_path in ('11','53', '35', '12')) then (put(&Reco_start_date,yymmdd10.)||'-23.59.59.000000')
+			else (put(&Reco_end_date,yymmdd10.)||'-23.59.59.000000')
+		end) FORMAT=$26. LABEL="DP_ENDTS" AS DP_ENDTS, 
+
+          (ABS(t1.DP_CUR_WEB_PRICE-t1.Reference_Price)/t1.DP_CUR_WEB_PRICE) FORMAT=6.3 LABEL=
+            	"Absolute_Price_Variance" AS Absolute_Price_Variance, 	
+          t1.COLLECTION_ITEM_SKU_NUM,
+          t1.Code_Path,
+	  	  t1.Reference_Price_Competitor,
+	  	  t1.AFLT_PRICE_AMT_Competitor,
+		  t1.PMR_AFLT_WEB_NM,
+	  	  t1.Current_Promo_Flag,
+		  t1.Upcoming_Promo_Filter,
+		  t1.Regular_Promo_Filter,
+		  t1.MAP_FLAG,
+		  t1.EM_FLAG,
+		  t1.VDC_WEB_FLAG,
+		  t1.No_Online_Inv_Flag,
+		  t1.Chain_Status_Flag,
+		  t1.Coll_excl_Flag ,
+		  t1.VDC_IND, 
+	      t1.Web_Only_Ind, 
+	      t1.In_Store_Ind,
+		  t1.SKU_sale_Type
+    FROM WORK.REMOVE_PROMO_SKU t1
+	LEFT JOIN WORK.SKU_FREIGHT t2 ON (t1.DP_SKU = t2.DP_SKU);
+QUIT;
+
+
+/*Creating Guard Rails */
+PROC SQL;
+   CREATE TABLE WORK.Guard_Rails AS 
+   SELECT DISTINCT t1.DP_STORE, 
+          t1.DP_DEPARTMENT, 
+          t1.DP_SUB_DEPARTMENT, 
+          t1.DP_CLASS, 
+          t1.DP_VENDOR, 
+          t1.MS_WPID, 
+          t1.DP_SKU, 
+          t1.SKU_Description, 
+          t1.DP_CHAIN_RETAIL, 
+          t1.DP_CHAIN_COST, 
+          t1.DP_REG_PRICE, 
+          t1.DP_CUR_WEB_PRICE, 
+          t1.BBB_PRICE_AMT, 
+          t1.Reference_Price, 
+          t1.BBB_Min, 
+          t1.MA_3, 
+          t1.MA_7, 
+          t1.AFLT_PRICE_AMT, 
+          t1.Overall_Coupon_Rate, 
+          t1.Overall_Break_Even, 
+          t1.SKU_Freight, 
+          t1.BUYER_NUMBER, 
+          t1.BUYER_NAME, 
+          t1.DP_DY_PRICE_STRTS,
+		  t1.DP_DY_PRICE_END, 
+          t1.DP_ENDTS, 
+          ((1-t1.Competition_Delta)*t1.Reference_Price) FORMAT=9.2 LABEL="Competition_Min" AS Competition_Min, 
+          ((1+t1.Competition_Delta)*t1.Reference_Price) FORMAT=9.2 LABEL="Competition_Max" AS Competition_Max, 
+          ((Case when ((t1.Reference_Price)*(1+t1.Competition_Delta)) GT t1.BBB_Min Then 
+                        		((t1.Reference_Price)*(1+t1.Competition_Delta))
+                 Else t1.DP_CUR_WEB_PRICE
+                 End)) FORMAT=9.2 LABEL="Range_Max" AS Range_Max,
+
+((Case when t1.BBB_Min GT (t1.Reference_Price)*(1-t1.Competition_Delta) Then t1.BBB_Min
+                 Else (t1.Reference_Price*(1-t1.Competition_Delta)) 
+                 End)) FORMAT=9.2 LABEL="Range_Min" AS Range_Min, 
+          t1.Competition_Delta, 
+          t1.COLLECTION_ITEM_SKU_NUM,
+          t1.Code_Path,
+          t1.Reference_Price_Competitor,
+          t1.AFLT_PRICE_AMT_Competitor,
+		  t1.PMR_AFLT_WEB_NM,
+		  t1.Current_Promo_Flag,
+		  t1.Upcoming_Promo_Filter,
+		  t1.Regular_Promo_Filter,
+		  t1.MAP_FLAG,
+		  t1.EM_FLAG,
+		  t1.VDC_WEB_FLAG,
+		  t1.No_Online_Inv_Flag,
+		  t1.Chain_Status_Flag,
+		  t1.Coll_excl_Flag ,
+		  t1.VDC_IND, 
+	      t1.Web_Only_Ind, 
+	      t1.In_Store_Ind,
+		  t1.SKU_sale_Type
+      FROM WORK.BBB_MIN t1
+      ORDER BY t1.DP_SKU;
+QUIT;
+
+/* Applying Position Rules*/ 
+PROC SQL;
+   CREATE TABLE WORK.Position_Rules AS 
+   SELECT DISTINCT t1.DP_STORE, 
+          t1.DP_DEPARTMENT, 
+          t1.DP_SUB_DEPARTMENT, 
+          t1.DP_CLASS, 
+          t1.DP_VENDOR, 
+          t1.MS_WPID, 
+          t1.DP_SKU, 
+          t1.SKU_Description, 
+          t1.DP_CHAIN_RETAIL, 
+		   /* Chain to Reg */    
+          t1.DP_REG_PRICE, 
+          t1.DP_CHAIN_COST, 
+          t1.DP_DY_PRICE_STRTS, 
+		  t1.DP_DY_PRICE_END,
+          t1.DP_ENDTS, 
+          t1.BBB_PRICE_AMT, 
+          t1.DP_CUR_WEB_PRICE, 
+          t1.Overall_Coupon_Rate, 
+          t1.Overall_Break_Even, 
+          t1.SKU_Freight, 
+          t1.BBB_Min, 
+          t1.Reference_Price, 
+          t1.MA_3, 
+          t1.MA_7, 
+          t1.AFLT_PRICE_AMT, 
+          ((Case When t1.DP_CUR_WEB_PRICE GE t1.Range_Max Then 
+             		Case when t1.BBB_Min GE t1.Competition_Max Then '3'  
+              	  	   When t1.BBB_Min GT  t1.Competition_Min Then '4'
+                 		When t1.BBB_Min EQ  t1.Competition_Min Then '0'
+            			Else '1' End
+             	Else 
+             		Case When t1.DP_CUR_WEB_PRICE Between t1.Range_Min And t1.Range_Max Then
+             			Case When t1.BBB_Min GT  t1.Competition_Min Then '6'
+                 			When t1.BBB_Min EQ  t1.Competition_Min Then '0'
+            				Else '2' End
+            			Else '5' End
+             	End )) FORMAT=$2. LABEL="Scenario" AS Scenario, 
+            ((Case When t1.DP_CUR_WEB_PRICE GE t1.Range_Max Then 
+                        Case When t1.BBB_Min GE t1.Competition_Max Then t1.BBB_Min Else t1.Range_Max End
+                   Else 
+                        Case When t1.DP_CUR_WEB_PRICE Between t1.Range_Min And t1.Range_Max Then t1.DP_CUR_WEB_PRICE             						
+							Else t1.Range_Min End
+                   End )) FORMAT=9.2 LABEL="Position_Rules" AS Position_Rules, 
+          t1.BUYER_NUMBER, 
+          t1.BUYER_NAME, 
+          t1.Competition_Min, 
+          t1.Competition_Max, 
+
+          t1.Range_Max, 
+          t1.Range_Min, 
+          t1.Competition_Delta, 
+          t1.COLLECTION_ITEM_SKU_NUM,
+           t1.Code_Path,
+          t1.Reference_Price_Competitor,
+          t1.AFLT_PRICE_AMT_Competitor,
+		  t1.PMR_AFLT_WEB_NM,
+		  t1.Current_Promo_Flag,
+		  t1.Upcoming_Promo_Filter,
+		  t1.Regular_Promo_Filter,
+		  t1.MAP_FLAG,
+		  t1.EM_FLAG,
+		  t1.VDC_WEB_FLAG,
+		  t1.No_Online_Inv_Flag,
+		  t1.Chain_Status_Flag,
+		  t1.Coll_excl_Flag ,
+		  t1.VDC_IND, 
+	      t1.Web_Only_Ind, 
+	      t1.In_Store_Ind,
+		  t1.SKU_sale_Type
+      FROM WORK.GUARD_RAILS t1;
+QUIT;
+
+/*Applying Max weekly Change*/
+PROC SQL;
+   CREATE TABLE WORK.Max_Weekly_Change AS 
+   SELECT DISTINCT t1.DP_STORE, 
+          t1.DP_DEPARTMENT, 
+          t1.DP_SUB_DEPARTMENT, 
+          t1.DP_CLASS, 
+          t1.DP_VENDOR, 
+          t1.MS_WPID, 
+          t1.DP_SKU, 
+          t1.SKU_Description, 
+          t1.DP_CHAIN_RETAIL,
+ 		  /* Chain to Reg */    
+          t1.DP_REG_PRICE,  
+          t1.DP_CHAIN_COST, 
+          t1.BBB_PRICE_AMT, 
+          t1.DP_CUR_WEB_PRICE, 
+          t1.BBB_Min, 
+          t1.Overall_Coupon_Rate, 
+          t1.Overall_Break_Even, 
+          t1.SKU_Freight, 
+          t1.Reference_Price, 
+          t1.Competition_Min, 
+          t1.Competition_Max, 
+          t1.Range_Max, 
+          t1.Range_Min, 
+          t1.MA_3, 
+          t1.MA_7, 
+          t1.AFLT_PRICE_AMT, 
+          t1.DP_DY_PRICE_STRTS, 
+		  t1.DP_DY_PRICE_END,
+          t1.DP_ENDTS, 
+          t1.Position_Rules, 
+
+		  (case when t1.Code_Path = '6' then
+			((Case When ABS((t1.DP_CUR_WEB_PRICE-t1.Position_Rules)/t1.DP_CUR_WEB_PRICE) LE &Weekly_Change_ftg_test 
+                      	Then t1.Position_Rules 
+				  Else
+                     Case When t1.Position_Rules LE (1-&Weekly_Change_ftg_test)*t1.DP_CUR_WEB_PRICE Then
+                         			(1-&Weekly_Change_ftg_test)*t1.DP_CUR_WEB_PRICE 
+                        	Else (1+&Weekly_Change_ftg_test)*t1.DP_CUR_WEB_PRICE End
+                  End))
+			else
+          	((Case When ABS((t1.DP_CUR_WEB_PRICE-t1.Position_Rules)/t1.DP_CUR_WEB_PRICE) LE &Weekly_Change 
+                      	Then t1.Position_Rules 
+				  Else
+                     Case When t1.Position_Rules LE (1-&Weekly_Change)*t1.DP_CUR_WEB_PRICE Then
+                         			(1-&Weekly_Change)*t1.DP_CUR_WEB_PRICE 
+                        	Else (1+&Weekly_Change)*t1.DP_CUR_WEB_PRICE End
+                  End))
+
+			end) FORMAT=9.2 LABEL="Max_Weekly_Change" AS Max_Weekly_Change, 
+          t1.Scenario, 
+          t1.BUYER_NUMBER, 
+          t1.BUYER_NAME, 
+          t1.Competition_Delta, 
+          t1.COLLECTION_ITEM_SKU_NUM,
+          t1.Code_Path,
+          t1.Reference_Price_Competitor,
+          t1.AFLT_PRICE_AMT_Competitor,
+		  t1.PMR_AFLT_WEB_NM,
+		  t1.Current_Promo_Flag,
+		  t1.Upcoming_Promo_Filter,
+		  t1.Regular_Promo_Filter,
+		  t1.MAP_FLAG,
+		  t1.EM_FLAG,
+		  t1.VDC_WEB_FLAG,
+		  t1.No_Online_Inv_Flag,
+		  t1.Chain_Status_Flag,
+		  t1.Coll_excl_Flag,
+ 		  t1.VDC_IND, 
+	      t1.Web_Only_Ind, 
+	      t1.In_Store_Ind ,
+		  t1.SKU_sale_Type
+      FROM WORK.POSITION_RULES t1;
+QUIT;
+
+/*Applying Max Overall Change rule*/
+PROC SQL;
+   CREATE TABLE WORK.Max_Overall_Change AS 
+   SELECT DISTINCT t1.DP_STORE, 
+          t1.DP_DEPARTMENT, 
+          t1.DP_SUB_DEPARTMENT, 
+          t1.DP_CLASS, 
+          t1.DP_VENDOR, 
+          t1.MS_WPID, 
+          t1.DP_SKU, 
+          t1.SKU_Description, 
+          t1.DP_CHAIN_RETAIL, 
+		  /* Chain to Reg */    
+          t1.DP_REG_PRICE, 
+          t1.DP_CHAIN_COST, 
+          t1.BBB_PRICE_AMT, 
+          t1.DP_CUR_WEB_PRICE, 
+          t1.Overall_Coupon_Rate, 
+          t1.Overall_Break_Even, 
+          t1.SKU_Freight, 
+          t1.BBB_Min, 
+          t1.Reference_Price, 
+          t1.Competition_Min, 
+          t1.Competition_Max, 
+          t1.Range_Max, 
+          t1.Range_Min, 
+          t1.MA_3, 
+          t1.MA_7, 
+          t1.AFLT_PRICE_AMT, 
+          t1.Position_Rules, 
+          t1.Max_Weekly_Change, 
+          t1.DP_DY_PRICE_STRTS, 
+		  t1.DP_DY_PRICE_END,
+          t1.DP_ENDTS, 
+
+		  (case when t1.Code_Path = '6' then
+		  	(Case When t1.Max_Weekly_Change Between (1-&Max_Overall_Discount_ftg_test)*(t1.DP_REG_PRICE) And 
+                        (1+&Max_Overall_Discount_ftg_test)*(t1.DP_REG_PRICE) Then t1.Max_Weekly_Change
+                        Else Case When (t1.Max_Weekly_Change) LE (1-&Max_Overall_Discount_ftg_test)*(t1.DP_REG_PRICE) Then 
+                        (1-&Max_Overall_Discount_ftg_test)*(t1.DP_REG_PRICE) 
+            	Else (1+&Max_Overall_Discount_ftg_test)*(t1.DP_REG_PRICE) End 
+            End)
+
+		  else 
+			(Case When t1.Max_Weekly_Change Between (1-&Max_Overall_Discount)*(t1.DP_REG_PRICE) And 
+                        (1+&Max_Overall_Discount)*(t1.DP_REG_PRICE) Then t1.Max_Weekly_Change
+                        Else Case When (t1.Max_Weekly_Change) LE (1-&Max_Overall_Discount)*(t1.DP_REG_PRICE) Then 
+                        (1-&Max_Overall_Discount)*(t1.DP_REG_PRICE) 
+            	Else (1+&Max_Overall_Discount)*(t1.DP_REG_PRICE) End 
+            End)
+
+		  end) FORMAT=9.2 LABEL="Max_Overall_Change" AS Max_Overall_Change, 
+          t1.Scenario, 
+          t1.BUYER_NUMBER, 
+          t1.BUYER_NAME, 
+          t1.Competition_Delta, 
+          t1.COLLECTION_ITEM_SKU_NUM,
+          t1.Code_Path,
+          t1.Reference_Price_Competitor,
+          t1.AFLT_PRICE_AMT_Competitor,
+		  t1.PMR_AFLT_WEB_NM,
+		  t1.Current_Promo_Flag,
+		  t1.Upcoming_Promo_Filter,
+		  t1.Regular_Promo_Filter,
+		  t1.MAP_FLAG,
+		  t1.EM_FLAG,
+		  t1.VDC_WEB_FLAG,
+		  t1.No_Online_Inv_Flag,
+		  t1.Chain_Status_Flag,
+		  t1.Coll_excl_Flag ,
+		  t1.VDC_IND, 
+	      t1.Web_Only_Ind, 
+	      t1.In_Store_Ind,
+		  t1.SKU_sale_Type
+      FROM WORK.MAX_WEEKLY_CHANGE t1;
+QUIT;
+
+/*Roundign off*/
+PROC SQL;
+   CREATE TABLE WORK.Rounding AS 
+   SELECT DISTINCT t1.DP_STORE, 
+          t1.DP_DEPARTMENT, 
+          t1.DP_SUB_DEPARTMENT, 
+          t1.DP_CLASS, 
+          t1.DP_VENDOR, 
+          t1.MS_WPID, 
+          t1.DP_SKU, 
+          t1.SKU_Description, 
+          t1.DP_CHAIN_RETAIL,
+		  /* Chain to Reg */    
+          t1.DP_REG_PRICE,  
+          t1.DP_CHAIN_COST, 
+          t1.BBB_Min, 
+          t1.Overall_Coupon_Rate, 
+          t1.Overall_Break_Even, 
+          t1.SKU_Freight, 
+          t1.BBB_PRICE_AMT, 
+          t1.DP_CUR_WEB_PRICE, 
+          t1.Reference_Price, 
+          t1.Competition_Min, 
+          t1.Competition_Max, 
+          t1.Range_Max, 
+          t1.Range_Min, 
+          t1.MA_3, 
+          t1.MA_7, 
+          t1.AFLT_PRICE_AMT, 
+
+		  /*20-20 Flag for LTL test*/
+		  Case when (((int(t1.AFLT_PRICE_AMT)+.99)-t1.DP_CHAIN_COST)/t1.DP_CHAIN_COST) <-0.2 and 
+     			    ((int(t1.AFLT_PRICE_AMT)+.99)-t1.DP_CHAIN_COST) <-20 then "Y" 
+			   Else "N" 
+		  End as twenty_twenty_flag_aff,
+          Case when ((t1.DP_CUR_WEB_PRICE-t1.DP_CHAIN_COST)/t1.DP_CHAIN_COST) <-0.2 and 
+         			(t1.DP_CUR_WEB_PRICE-t1.DP_CHAIN_COST) <-20 then "Y" 
+			   Else "N" 
+		  End as twenty_twenty_flag_current,
+
+          t1.DP_DY_PRICE_STRTS, 
+		  t1.DP_DY_PRICE_END,
+          t1.BUYER_NUMBER, 
+          t1.BUYER_NAME, 
+          t1.DP_ENDTS, 
+          t1.Position_Rules, 
+          t1.Max_Weekly_Change, 
+          t1.Max_Overall_Change,
+
+ 		  (case when t1.Code_Path = '6' then
+			  (Case When Round(Abs(Int(t1.Max_Overall_Change)+0.99-t1.DP_CUR_WEB_PRICE)/(t1.DP_CUR_WEB_PRICE),0.01) > 1  Then 
+                          (Int(t1.Max_Overall_Change)+0.99-1)
+                Else Int(t1.Max_Overall_Change)+0.99 
+			 End)
+		  else 
+          	(Case When Round(Abs(Int(t1.Max_Overall_Change)+0.99-t1.DP_CUR_WEB_PRICE)/(t1.DP_CUR_WEB_PRICE),0.01) > 0.2  Then 
+                          (Int(t1.Max_Overall_Change)+0.99-1)
+                Else Int(t1.Max_Overall_Change)+0.99 
+			 End)
+		  end) FORMAT=9.2 LABEL="Suggested_Price" AS Suggested_Price, 
+          t1.Scenario, 
+          t1.Competition_Delta, 
+          t1.COLLECTION_ITEM_SKU_NUM, 
+          t2.DP_VENDOR_NAME as PIM_VENDOR_NAME,
+          t1.Code_Path,
+          t1.Reference_Price_Competitor,
+          t1.AFLT_PRICE_AMT_Competitor,
+		  t1.PMR_AFLT_WEB_NM,
+		  t1.Current_Promo_Flag,
+		  t1.Upcoming_Promo_Filter,
+		  t1.Regular_Promo_Filter,
+		  t1.MAP_FLAG,
+		  t1.EM_FLAG,
+		  t1.VDC_WEB_FLAG,
+		  t1.No_Online_Inv_Flag,
+		  t1.Chain_Status_Flag,
+		  t1.Coll_excl_Flag ,
+		  t1.VDC_IND, 
+	      t1.Web_Only_Ind, 
+	      t1.In_Store_Ind,
+		  t1.SKU_sale_Type
+	FROM WORK.MAX_OVERALL_CHANGE t1
+    INNER JOIN JDA_file t2 ON (t1.DP_SKU = t2.DP_SKU );
+QUIT;
+
+/*Extracting SKU-Wise Store wise-on Hand On-Order Units*/
+PROC SQL;
+   CREATE TABLE WORK.Distinct_SKUs_Remove AS 
+   SELECT DISTINCT t1.SKU_NUM as SKU
+   FROM WORK.INV_File t1
+   inner join WORK.JOIN t2 on t1.SKU_NUM = t2.ITEM_SKU_NUM
+   inner join WORK.DEPTS T3 ON t2.DP_DEPARTMENT = T3.DEPARTMENT_CD
+   left join WORK.STORE_EXCL T4 on t1.store_num = t4.store_num
+   WHERE (t1.EOD_ON_HAND_UNITS > t3.MIN_INVENTORY or		
+		 t1.EOD_PURCHASE_ON_ORDER_UNITS > 0 or	
+		 t1.EOD_TRANSFER_OUT_UNITS > t3.MIN_INVENTORY)
+          and t4.store_num = .;
+QUIT;
+
+
+/*Extracting SKUs with more than 500 units of ON HAND Inventory */
+PROC SQL;
+   CREATE TABLE WORK.Distinct_SKUs_Remove_500UOH AS 
+   SELECT DISTINCT t1.SKU_NUM as SKU,
+   					sum(t1.EOD_ON_HAND_UNITS) as  OH_Inv
+   FROM WORK.INV_File t1
+   inner join WORK.JOIN t2 on t1.SKU_NUM = t2.ITEM_SKU_NUM
+   inner join WORK.DEPTS T3 ON t2.DP_DEPARTMENT = T3.DEPARTMENT_CD
+   group by t1.SKU_NUM
+   having calculated OH_Inv > 500;
+QUIT;
+
+
+/*Generating Exception List*/ 
+proc sql;
+   CREATE TABLE WORK.Exception_List_Analysis AS 
+   SELECT DISTINCT t1.DP_STORE, 
+          t1.DP_DEPARTMENT, 
+          t1.DP_SUB_DEPARTMENT, 
+          t1.DP_CLASS, 
+          t1.DP_VENDOR, 
+          t1.MS_WPID, 
+          t1.DP_SKU, 
+          t1.SKU_Description, 
+          t1.DP_CHAIN_RETAIL, 
+		  /* Chain to Reg */    
+          t1.DP_REG_PRICE,
+          t1.DP_CHAIN_COST, 
+          t1.COLLECTION_ITEM_SKU_NUM,
+          t1.Overall_Coupon_Rate, 
+          t1.Overall_Break_Even, 
+          t1.SKU_Freight, 
+          t1.BBB_Min, 
+          t1.BBB_PRICE_AMT, 
+          t1.DP_CUR_WEB_PRICE, 
+          t1.Reference_Price, 
+          t1.MA_3, 
+          t1.MA_7, 
+          t1.AFLT_PRICE_AMT, 	
+/*t4.max_price as max_price_reg_table,
+t44.max_price as max_price_bf_table,*/		
+		   /*20-20 rule for LTL test */
+		   case /*when (t1.Code_Path in ('35') and int(t1.AFLT_PRICE_AMT)>= int(t1.DP_CUR_WEB_PRICE)) then t1.DP_CUR_WEB_PRICE /* no price increases for cp = 35*/
+				when (t1.Code_Path in ('11','35')) then /*20-20 rule*/
+				(case when t1.twenty_twenty_flag_aff="N" then 
+									(case when t44.max_price is not null and datepart(t44.in_effect_until) >= &today2 
+										then min(t44.max_price, Int(t1.AFLT_PRICE_AMT)+0.99)
+										 else (Int(t1.AFLT_PRICE_AMT)+0.99) end)
+					  else (case when t1.twenty_twenty_flag_aff="Y" and t1.twenty_twenty_flag_current="N" 
+										then (Int(t1.DP_CUR_WEB_PRICE)+0.99)
+								 else (case when t1.twenty_twenty_flag_aff="Y" and 
+											t1.twenty_twenty_flag_current="Y" then (Int(t1.DP_REG_PRICE)+0.99)
+										     Else t1.Suggested_price 
+										End) 
+							End)
+				End)
+				Else t1.Suggested_price 
+			End as Suggested_price,
+
+			/* 20-20 rule Flag*/
+		    case when (t1.Code_Path in ('11','35')) then 
+					(case when t1.twenty_twenty_flag_aff="Y" then "A" /*Affiliate Price is too Low*/
+						  else (case when t1.twenty_twenty_flag_aff="Y" and 
+										t1.twenty_twenty_flag_current="N" then "C" /*Current Price is too low*/
+									 else "N" 
+								End) 
+					End)
+				Else "N" 
+			End as Twenty_twenty_Flag,
+
+		    (Case when t1.Code_Path in ('11', '35') then "Rok"
+				  When (T2.ALLOW_PRICE_INCREASE= 'N' and t1.Suggested_Price GT t1.DP_CUR_WEB_PRICE) Then "R03" 
+                  When t4.sku_num NE . and t1.Suggested_Price GT t4.MAX_PRICE  and datepart(t4.in_effect_until) >= &today2 Then "R03"
+				  When t1.Code_Path not in ('53') and t1.Suggested_Price EQ t1.DP_CUR_WEB_PRICE Then  "R01"
+				  When t1.Code_Path in ('53') and t1.Suggested_Price EQ t1.DP_CUR_WEB_PRICE Then  "Rok"
+                  When t1.Suggested_Price LT t1.BBB_Min Then "R02"
+                  Else "Rok"  End ) LABEL="Post_Price" AS Post_Price_Flag,
+
+          (Case when t1.Code_Path in ('11', '35') then "N"
+				When t1.DP_CUR_WEB_PRICE LT t1.BBB_Min Then "Y" Else "N" 
+				End) LABEL="BBM_Buyer_Below_Min_Flag" AS BBM_Buyer_Below_Min_Flag, 
+
+          ("NA") LABEL="Amazon_Below_MAP_Flag" AS Amazon_Below_MAP_Flag, 
+    
+		  /* Chain to Reg */
+		  (Case when t1.Code_Path in ('11', '35', '12') then "N"
+				When Abs((/*t1.DP_CHAIN_RETAIL*/t1.DP_REG_PRICE-t1.DP_CUR_WEB_PRICE)//*t1.DP_CHAIN_RETAIL*/t1.DP_REG_PRICE) GT &PPC_var. Then "Y" 
+				Else "N" End) LABEL="PPC_Permanent_Price_Change_Flag" AS PPC_Permanent_Price_Change_Flag, 
+
+          (case when  t1.Code_Path in ('6', '11', '35', '12')  then "N"
+		  	else
+				Case When Abs((t1.AFLT_PRICE_AMT-t1.DP_CUR_WEB_PRICE)/t1.DP_CUR_WEB_PRICE) GT &BPC_var. Then "Y" 
+				Else "N" End
+			end) LABEL="BPC_Bad_Price_Candidate_Flag" AS BPC_Bad_Price_Candidate_Flag, 
+
+          (Case when t1.Code_Path in ('11', '35', '12') then "N"
+				When t1.Reference_Price LT t1.DP_CHAIN_COST Then "Y" 
+				Else "N" End) LABEL="RBC_Reference_Price_Below_Cost" AS RBC_Reference_Price_Below_Cost, 
+          t1.Competition_Delta, 
+          t1.PIM_VENDOR_NAME,
+		  &exception_dt   AS Exception_list_Date,
+          t1.Code_Path,
+          t1.Reference_Price_Competitor,
+          t1.AFLT_PRICE_AMT_Competitor,
+		  t1.PMR_AFLT_WEB_NM,
+		  t1.Current_Promo_Flag,
+		  t1.Upcoming_Promo_Filter,
+		  t1.Regular_Promo_Filter,
+		  t1.MAP_FLAG,
+		  t1.EM_FLAG,
+		  t1.VDC_WEB_FLAG,
+		  t1.No_Online_Inv_Flag,
+		  t1.Chain_Status_Flag,
+		  t1.Coll_excl_Flag,
+		  (case when  t1.Code_Path in  ('6','11', '35', '12') then "N" 
+		  else 
+			case when t1.SKU_sale_Type = "VDC" and t3.SKU = . then "N"
+		  		when t1.SKU_sale_Type = "VDC" and t3.SKU NE . then "Y"
+			else "Y" end
+		  end) as Store_Inv_Flag,
+
+		  (case when t1.Code_Path = '40' and t10.sku_num NE . then "N"
+				when t1.Code_Path = '40' and t10.sku_num = . and t33.SKU = . then "N"
+		  		when t1.Code_Path = '40' and t10.sku_num = . and t33.SKU NE . then "Y"
+				else "Y" end) as UOH_Inv500_Flag,
+
+		  t1.DP_DY_PRICE_STRTS, 
+		  t1.DP_DY_PRICE_END,
+          t1.DP_ENDTS,
+		  t1.Scenario,
+		  t1.VDC_IND, 
+	      t1.Web_Only_Ind, 
+	      t1.In_Store_Ind,
+		  t1.SKU_sale_Type
+	FROM WORK.ROUNDING t1
+    left join work.depts t2 on t1.dp_department = t2.department_cd
+ 	LEFT JOIN WORK.Distinct_SKUs_Remove t3 ON (t1.DP_SKU = t3.SKU)
+	LEFT JOIN WORK.Distinct_SKUs_Remove_500UOH t33 ON (t1.DP_SKU = t33.SKU)
+    left join work.no_price_increase t4 on t4.sku_num = t1.dp_sku
+	left join WORK.bf_2017_sku_no_increase t44 on t44.sku_num = t1.dp_sku
+
+	LEFT JOIN (select distinct sku_num 
+			    from WORK.webonly_vendor
+				where sku_num NE .  and DEPARTMENT_cd in (560,570)) t10 ON (t1.dp_SKU = t10.sku_num);
+QUIT;
+
+
+/*Generating Post Filter*/ 
+PROC SQL;
+   CREATE TABLE WORK.Post_Filter AS 
+   SELECT DISTINCT t1.DP_STORE, 
+          t1.DP_DEPARTMENT, 
+          t1.DP_SUB_DEPARTMENT, 
+          t1.DP_CLASS, 
+          t1.DP_VENDOR, 
+          t1.MS_WPID, 
+          t1.DP_SKU, 
+          t1.SKU_Description, 
+		  t1.COLLECTION_ITEM_SKU_NUM,
+          t1.DP_CHAIN_RETAIL, 
+		  /* Chain to Reg */    
+          t1.DP_REG_PRICE,
+          t1.DP_CHAIN_COST, 
+          t1.BBB_Min, 
+          t1.Overall_Coupon_Rate, 
+          t1.Overall_Break_Even, 
+          t1.SKU_Freight, 
+          t1.BBB_PRICE_AMT, 
+          t1.DP_CUR_WEB_PRICE, 
+          t1.Reference_Price, 
+          t1.MA_3, 
+          t1.MA_7, 
+          t1.AFLT_PRICE_AMT, 
+		  t1.PIM_VENDOR_NAME,   
+          t1.code_path,
+		  t1.Suggested_Price, 
+		  t1.DP_DY_PRICE_STRTS, 
+		  t1.DP_DY_PRICE_END,
+          t1.DP_ENDTS,  
+ 		  t1.Scenario,  
+         /* Reason_Code */
+ 		  (Case when  t1.Code_Path in ('11','35') and t1.Twenty_twenty_Flag in ("A", "C") Then "BB"
+				when  t1.Reference_Price_Competitor = 'Amazon(SBA)' and t1.Reference_Price > t1.DP_CUR_WEB_PRICE Then "AH"
+				When  t1.Reference_Price_Competitor = 'Amazon(SBA)' and t1.Reference_Price <= t1.DP_CUR_WEB_PRICE Then "AL"
+
+				when  t1.Reference_Price_Competitor = 'Amazon(FBA)' and t1.Reference_Price > t1.DP_CUR_WEB_PRICE Then "FH"
+				When  t1.Reference_Price_Competitor = 'Amazon(FBA)' and t1.Reference_Price <= t1.DP_CUR_WEB_PRICE Then "FL"
+
+				When  t1.Reference_Price_Competitor = 'Overstock' and t1.Reference_Price > t1.DP_CUR_WEB_PRICE Then "OH"
+				When  t1.Reference_Price_Competitor = 'Overstock' and t1.Reference_Price <= t1.DP_CUR_WEB_PRICE Then "OL"
+
+				When  t1.Reference_Price_Competitor = 'Walmart' and t1.Reference_Price > t1.DP_CUR_WEB_PRICE Then "WH"
+				When  t1.Reference_Price_Competitor = 'Walmart' and t1.Reference_Price <= t1.DP_CUR_WEB_PRICE Then "WL"
+
+				When  t1.Reference_Price_Competitor = 'Wayfair' and t1.Reference_Price > t1.DP_CUR_WEB_PRICE Then "YH"
+				When  t1.Reference_Price_Competitor = 'Wayfair' and t1.Reference_Price <= t1.DP_CUR_WEB_PRICE Then "YL"
+
+				When  t1.Reference_Price_Competitor = 'Lowes' and t1.Reference_Price > t1.DP_CUR_WEB_PRICE Then "LH"
+				When  t1.Reference_Price_Competitor = 'Lowes' and t1.Reference_Price <= t1.DP_CUR_WEB_PRICE Then "LL"
+
+				When  t1.Reference_Price_Competitor = 'HD' and t1.Reference_Price > t1.DP_CUR_WEB_PRICE Then "HH"
+				When  t1.Reference_Price_Competitor = 'HD' and t1.Reference_Price <= t1.DP_CUR_WEB_PRICE Then "HL"
+
+				When  t1.Reference_Price_Competitor = 'Macys' and t1.Reference_Price > t1.DP_CUR_WEB_PRICE Then "MH"
+				When  t1.Reference_Price_Competitor = 'Macys' and t1.Reference_Price <= t1.DP_CUR_WEB_PRICE Then "ML"
+					
+				When  t1.Reference_Price_Competitor = 'Target' and t1.Reference_Price > t1.DP_CUR_WEB_PRICE Then "TH"
+				When  t1.Reference_Price_Competitor = 'Target' and t1.Reference_Price <= t1.DP_CUR_WEB_PRICE Then "TL"
+				
+				When  t1.Reference_Price_Competitor = 'ToysRUs' and t1.Reference_Price > t1.DP_CUR_WEB_PRICE Then "RH"
+				When  t1.Reference_Price_Competitor = 'ToysRUs' and t1.Reference_Price <= t1.DP_CUR_WEB_PRICE Then "RL"
+				
+				When  t1.Reference_Price_Competitor = 'eBags' and t1.Reference_Price > t1.DP_CUR_WEB_PRICE Then "EH"
+				When  t1.Reference_Price_Competitor = 'eBags' and t1.Reference_Price <= t1.DP_CUR_WEB_PRICE Then "EL"
+
+				When  t1.Reference_Price_Competitor = 'Sears' and t1.Reference_Price > t1.DP_CUR_WEB_PRICE Then "SH"
+				When  t1.Reference_Price_Competitor = 'Sears' and t1.Reference_Price <= t1.DP_CUR_WEB_PRICE Then "SL"
+				else "??"  End) FORMAT=$2. LABEL= "Reason_Code" AS Reason_Code,
+          ("N") FORMAT=$CHAR1. LABEL="Coupon_Exclusion_Code" AS Coupon_Exclusion_Code,
+		  t1.SKU_sale_Type
+                   
+      FROM WORK.Exception_List_Analysis t1
+      WHERE (t1.Post_Price_Flag = "Rok" AND
+			t1.BBM_Buyer_Below_Min_Flag = "N" AND
+			t1.PPC_Permanent_Price_Change_Flag = "N" AND
+			t1.RBC_Reference_Price_Below_Cost = "N" AND
+			t1.Current_Promo_Flag = "N" AND
+			t1.Upcoming_Promo_Filter = "N" AND
+			/*t1.Regular_Promo_Filter = "N" AND*/
+			t1.MAP_FLAG = "N" AND
+			t1.EM_FLAG = "N" AND		
+			t1.Chain_Status_Flag="N" AND
+			t1.Coll_excl_Flag = "N" AND
+			((  t1.Store_Inv_Flag = "N" and 
+				t1.VDC_WEB_FLAG = "N" AND
+				t1.BPC_Bad_Price_Candidate_Flag = "N" AND
+			/*	t1.No_Online_Inv_Flag = "N" AND*/
+				t1.code_path in ('1', '7', '53', '12') ) OR
+ 
+			(t1.MAP_FLAG = "N" AND 
+			t1.code_path in ('6'))   OR
+
+			(  	t1.BPC_Bad_Price_Candidate_Flag = "N" AND
+				t1.UOH_Inv500_Flag = "N" AND
+				t1.code_path in ('40') ))) OR
+			(t1.Code_Path in ('11', '35') and t1.MAP_FLAG = "N");
+QUIT;
+
+/*create Reco Report*/ 
+PROC SQL;
+   CREATE TABLE WORK.Reco_Report_SBS AS 
+   SELECT DISTINCT (t1.MS_WPID) LABEL="Multi_SKU_Web_Product_ID" AS Multi_SKU_Web_Product_ID, 
+          (t1.COLLECTION_ITEM_SKU_NUM) LABEL="Collection#" AS Collection_num, 
+          (t1.DP_SKU) LABEL="SKU#" AS SKU_num, 
+          (t1.SKU_Description) LABEL="SKU_Description" AS SKU_Description, 
+          (t1.DP_DEPARTMENT) LABEL="Department" AS Department_cd, 
+          (t1.DP_CUR_WEB_PRICE) LABEL="Current_Web_Price" AS Current_Web_Price, 
+          (t1.Suggested_Price) LABEL="Dynamic_Price_Recommendation" AS Dynamic_Price_Recommendation, 
+          ((t1.Suggested_Price-t1.DP_CUR_WEB_PRICE)/t1.DP_CUR_WEB_PRICE) FORMAT=PERCENT8.0 LABEL=
+           		 "Percent Change (Dyanmic Price-Current Price)/Current Price" AS Percent_Change_Price, 
+          ((t1.Suggested_Price-t1.Reference_Price)/t1.Reference_Price) FORMAT=PERCENT8.1 LABEL=
+            	 "Percent Difference (Dynamic Price-Amazon_Reference_Price)/Dynamic Price" AS Percent_Diff, 
+          ((t1.Suggested_Price-t1.DP_CHAIN_COST)/t1.Suggested_Price) FORMAT=PERCENT8.1 LABEL=
+            	 "(DynamicPrice-Chain Cost)/Dynamic Price" AS New_Markup, 
+          (t1.MA_7) LABEL="7_Day_Moving_Avg" AS 'Seven_Day_Moving_Avg'n, 
+          (t1.MA_3) LABEL="3_Day_Moving_Avg" AS 'Three_Day_Moving_Avg'n, 
+          (t1.AFLT_PRICE_AMT) LABEL="Current Competitor Price" AS Current_Comp_Price, 
+          (t1.Reference_Price) LABEL="Competitor Reference Price" AS Comp_Reference_Price, 
+          (t1.BBB_Min) LABEL="BBB_Min_Price" AS BBB_Min_Price, 
+          (t1.DP_CHAIN_RETAIL) LABEL="Chain Retail Price" AS Chain_Retail_Price, 
+		  /* Chain to Reg */
+		  (t1.DP_REG_PRICE) LABEL="Regular Retail" AS Regular_Retail,
+          (t1.DP_CHAIN_COST) LABEL="Chain Cost" AS Chain_Cost, 
+          (t1.Overall_Coupon_Rate) FORMAT=PERCENT8.0 LABEL="Coupon Rate" AS Coupon_Rate, 
+          (t1.Overall_Break_Even) FORMAT=PERCENT8.0 LABEL="Profit Buffer" AS Profit_Buffer, 
+          (t1.SKU_Freight) FORMAT=PERCENT8.0 LABEL="Freight Rate (as a % of Cost)" AS Freight_Rate, 
+          (t1.PIM_VENDOR_NAME) LABEL="Vendor Name" AS Vendor_Name, 
+		  (t1.DP_VENDOR) LABEL="Vendor Code" AS Vendor_Code, 
+          ((t1.Suggested_Price-t1.BBB_Min)/t1.Suggested_Price) FORMAT=PERCENT8.0 LABEL=
+            	 "Markup Above BBB Min (Dynamic Price-BBB Min / Dynamic Price)" AS Markup_Above_BBB_Min, 
+          ((t1.DP_CUR_WEB_PRICE-t1.Reference_Price)/t1.DP_CUR_WEB_PRICE) FORMAT=PERCENT8.0 LABEL=
+            	 "Current Variance ((BBB-Amazon Reference Price)/BBB)" AS Current_Variance, 
+          (t1.Reason_Code) LABEL="DP_DY_BUS_RSNCD" AS DP_DY_BUS_RSNCD, 
+          (t1.Scenario||'7') LABEL="DP_DY_SET_RULECD" AS DP_DY_SET_RULECD, 
+          t1.DP_DY_PRICE_STRTS, 
+		  t1.DP_DY_PRICE_END,
+          t1.DP_ENDTS,
+          t1.code_path,
+		  t1.SKU_sale_Type
+	FROM WORK.POST_FILTER t1;
+QUIT;
+
+proc sort data=WORK.Reco_Report_SBS nodupkey;
+    by  sku_num;
+run;
+
+proc delete data=WORK.DISTINCT_CLASSES_UNCOMMON
+ WORK.FREIGHT_BY_CLASS
+ WORK.FREIGHT_BY_CLASS_VENDOR
+ WORK.FREIGHT_UNCOMMON_SKUS
+ WORK.UNCOMMON_SKUS
+ WORK.COMMON_SKUS
+ WORK.DISTINCT_CLASSES
+ WORK.NON_CLASS_SKUS
+ WORK.NON_CLASS_VENDOR_FREIGHT
+ WORK.VDC_FREIGHT_COSTS;
+run;
+
+
