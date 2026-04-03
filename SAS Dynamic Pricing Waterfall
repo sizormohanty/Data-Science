@@ -1,0 +1,936 @@
+
+/*SNM - 7/7/2016 revized code for inventory bucket calculation
+		Added check if there is a mismatch in the waterfall counts, then send an email*/
+/*SNM - 7/19/2016 revized code to use SUM function instead of +
+	This should take care of instances where . instead of 0 */
+
+proc sql;
+	/*how many SKUs we start with, in the JDA file*/
+	create table WORK.JDA_Count as
+	select distinct t1.dp_department,
+		t2.DEPARTMENT_NAME,
+	  count(distinct t1.dp_sku) as sku_ct,
+	  "JDA_SKU" as Type length =20
+	from WORK.JDA_File t1
+	inner join WORK.DEPTS T2 ON t1.DP_DEPARTMENT = T2.DEPARTMENT_CD
+	where t1.dp_store=651
+	group by t1.dp_department;
+
+	/*How many SKUS are left after merger JDA and PIM File*/
+	create table WORK.DPIM_Count as
+	select dp_department,
+	  count(distinct dp_sku) as sku_ct,
+	  "Post_Inv_SKU" as Type length=20
+	from WORK.Distinct_PIM
+	group by dp_department;
+
+	/* How many SKUS are have Competitor Matches */
+	create table WORK.Join_Count as
+	select dp_department,
+	  count(distinct dp_sku) as sku_ct,
+	  "Comp_Match_SKU" as Type length=20
+	from WORK.Join
+	group by dp_department;
+
+	/*How many SKUS are left after upcoming promotion filter */
+	create table WORK.Remove_Promo_SKUs_Count as
+	select dp_department,
+	  count(distinct dp_sku) as sku_ct,
+	  "Post_Promo_SKU" as Type length=20
+	from WORK.Remove_Promo_SKUs_temp
+	group by dp_department;
+quit;
+
+proc sql;
+	create table WORK.Exc_List_Count as
+	select dp_department,
+	  count(distinct dp_sku) as sku_ct,
+	  "Exc_List_SKU" as Type length=20
+	from WORK.Exception_List_ALL
+	group by dp_department;   
+quit;
+
+proc sql;
+	create table WORK.Priced_Right_Count as
+	select dp_department,
+	  count(distinct dp_sku) as sku_ct,
+	  "Priced_Right_SKU" as Type length=20
+	from WORK.Exception_List_ALL
+	where Post_Price_Flag = "R01"
+	group by dp_department;   
+quit;
+
+proc sql;
+	create table WORK.MAP_Count as
+	select dp_department,
+	  count(distinct dp_sku) as sku_ct,
+	  "MAP_SKU" as Type length=20
+	from WORK.Exception_List_ALL
+	where Post_Price_Flag not = "R01" and
+			MAP_FLAG = "Y"
+	group by dp_department;   
+quit;
+
+proc sql;
+	create table WORK.EM_Count as
+	select dp_department,
+	  count(distinct dp_sku) as sku_ct,
+	  "EM_SKU" as Type length=20
+	from WORK.Exception_List_ALL
+	where Post_Price_Flag not = "R01" and
+			MAP_FLAG = "N" and
+			EM_FLAG = "Y"
+	group by dp_department;   
+quit;
+
+proc sql;
+	create table WORK.Promos_Count as
+	select dp_department,
+	  count(distinct dp_sku) as sku_ct,
+	  "Promos_SKU" as Type length=20
+	from WORK.Exception_List_ALL
+	where Post_Price_Flag not = "R01" and
+			MAP_FLAG = "N" and
+			EM_FLAG = "N" and
+			(Current_Promo_Flag = "Y" or Upcoming_Promo_Filter = "Y")
+	group by dp_department;   
+quit;
+
+proc sql;
+	create table WORK.Store_Inv_Count as
+	select dp_department,
+	  count(distinct dp_sku) as sku_ct,
+	  "Store_Inv_SKU" as Type length=20
+	from WORK.Exception_List_ALL
+	where Post_Price_Flag not = "R01" and
+			MAP_FLAG = "N" and
+			EM_FLAG = "N" and
+			Current_Promo_Flag = "N" and Upcoming_Promo_Filter = "N" and
+			Store_Inv_Flag = "Y" and Code_Path Ne '40'
+	group by dp_department;   
+quit;
+
+
+proc sql;
+	create table WORK.Store_Inv_CP40_Count as
+	select dp_department,
+	  count(distinct dp_sku) as sku_ct,
+	  "Store_Inv_SKU" as Type length=20
+	from WORK.Exception_List_ALL
+	where Post_Price_Flag not = "R01" and
+			MAP_FLAG = "N" and
+			EM_FLAG = "N" and
+			Current_Promo_Flag = "N" and Upcoming_Promo_Filter = "N" and
+			UOH_Inv500_Flag = "Y" and Code_Path = '40'
+	group by dp_department;   
+quit;
+
+proc sql;
+	create table WORK.At_BBBMin_Count as
+	select dp_department,
+	  count(distinct dp_sku) as sku_ct,
+	  "At_BBBMin_SKU" as Type length=20
+	from WORK.Exception_List_ALL
+	where Post_Price_Flag not = "R01" and
+			MAP_FLAG = "N" and
+			EM_FLAG = "N" and
+			Current_Promo_Flag = "N" and Upcoming_Promo_Filter = "N" and
+			((Store_Inv_Flag = "N" and Code_Path Ne '40') OR (UOH_Inv500_Flag = "N" and Code_Path = '40')) and
+			Post_Price_Flag = "R02"
+	group by dp_department;   
+quit;
+
+proc sql;
+	create table WORK.Price_Increases_Count as
+	select dp_department,
+	  count(distinct dp_sku) as sku_ct,
+	  "Price_Increases_SKU" as Type length=20
+	from WORK.Exception_List_ALL
+	where Post_Price_Flag not = "R01" and
+			MAP_FLAG = "N" and
+			EM_FLAG = "N" and
+			Current_Promo_Flag = "N" and Upcoming_Promo_Filter = "N" and
+			((Store_Inv_Flag = "N" and Code_Path Ne '40') OR (UOH_Inv500_Flag = "N" and Code_Path = '40')) and
+			Post_Price_Flag not = "R02" and
+			Post_Price_Flag = "R03"
+	group by dp_department;   
+quit;
+
+proc sql;
+	create table WORK.BBMin_Count as
+	select dp_department,
+	  count(distinct dp_sku) as sku_ct,
+	  "BBMin_SKU" as Type length=20
+	from WORK.Exception_List_ALL
+	where 	MAP_FLAG = "N" and
+			EM_FLAG = "N" and
+			Current_Promo_Flag = "N" and Upcoming_Promo_Filter = "N" and
+			((Store_Inv_Flag = "N" and Code_Path Ne '40') OR (UOH_Inv500_Flag = "N" and Code_Path = '40')) and
+			Post_Price_Flag = "Rok" and
+			BBM_Buyer_Below_Min_Flag = "Y"
+	group by dp_department;   
+quit;
+
+proc sql;
+	create table WORK.PPC_Count as
+	select dp_department,
+	  count(distinct dp_sku) as sku_ct,
+	  "PPC_SKU" as Type length=20
+	from WORK.Exception_List_ALL
+	where 	MAP_FLAG = "N" and
+			EM_FLAG = "N" and
+			Current_Promo_Flag = "N" and Upcoming_Promo_Filter = "N" and
+			((Store_Inv_Flag = "N" and Code_Path Ne '40') OR (UOH_Inv500_Flag = "N" and Code_Path = '40')) and
+			Post_Price_Flag = "Rok" and
+			BBM_Buyer_Below_Min_Flag = "N" and
+			PPC_Permanent_Price_Change_Flag = "Y"
+	group by dp_department;   
+quit;
+
+proc sql;
+	create table WORK.RBC_Count as
+	select dp_department,
+	  count(distinct dp_sku) as sku_ct,
+	  "RBC_SKU" as Type length=20
+	from WORK.Exception_List_ALL
+	where 	MAP_FLAG = "N" and
+			EM_FLAG = "N" and
+			Current_Promo_Flag = "N" and Upcoming_Promo_Filter = "N" and
+			((Store_Inv_Flag = "N" and Code_Path Ne '40') OR (UOH_Inv500_Flag = "N" and Code_Path = '40')) and
+			Post_Price_Flag = "Rok" and
+			BBM_Buyer_Below_Min_Flag = "N" and
+			PPC_Permanent_Price_Change_Flag = "N" and
+			RBC_Reference_Price_Below_Cost = "Y"
+	group by dp_department;   
+quit;
+
+proc sql;
+	create table WORK.BPC_Count as
+	select dp_department,
+	  count(distinct dp_sku) as sku_ct,
+	  "BPC_SKU" as Type length=20
+	from WORK.Exception_List_ALL
+	where 	MAP_FLAG = "N" and
+			EM_FLAG = "N" and
+			Current_Promo_Flag = "N" and Upcoming_Promo_Filter = "N" and
+			((Store_Inv_Flag = "N" and Code_Path Ne '40') OR (UOH_Inv500_Flag = "N" and Code_Path = '40')) and
+			Post_Price_Flag = "Rok" and
+			BBM_Buyer_Below_Min_Flag = "N" and
+			PPC_Permanent_Price_Change_Flag = "N" and
+			RBC_Reference_Price_Below_Cost = "N" and
+			BPC_Bad_Price_Candidate_Flag = "Y"
+	group by dp_department;   
+quit;
+
+proc sql;
+	create table WORK.VDC_WEB_Count as
+	select dp_department,
+	  count(distinct dp_sku) as sku_ct,
+	  "VDC_WEB_SKU" as Type length=20
+	from WORK.Exception_List_ALL
+	where   MAP_FLAG = "N" and
+			EM_FLAG = "N" and
+			Current_Promo_Flag = "N" and Upcoming_Promo_Filter = "N" and
+			((Store_Inv_Flag = "N" and Code_Path Ne '40') OR (UOH_Inv500_Flag = "N" and Code_Path = '40')) and
+			Post_Price_Flag = "Rok" and
+			BBM_Buyer_Below_Min_Flag = "N" and
+			PPC_Permanent_Price_Change_Flag = "N" and
+			RBC_Reference_Price_Below_Cost = "N" and
+			BPC_Bad_Price_Candidate_Flag = "N" and
+			(VDC_WEB_FLAG = "Y"  and Code_Path Ne '40')
+	group by dp_department;   
+quit;
+
+proc sql;
+	create table WORK.Chain_Status_Count as
+	select dp_department,
+	  count(distinct dp_sku) as sku_ct,
+	  "Chain_Status_SKU" as Type length=20
+	from WORK.Exception_List_ALL
+	where   MAP_FLAG = "N" and
+			EM_FLAG = "N" and
+			Current_Promo_Flag = "N" and Upcoming_Promo_Filter = "N" and
+			((Store_Inv_Flag = "N" and Code_Path Ne '40') OR (UOH_Inv500_Flag = "N" and Code_Path = '40')) and
+			Post_Price_Flag = "Rok" and
+			BBM_Buyer_Below_Min_Flag = "N" and
+			PPC_Permanent_Price_Change_Flag = "N" and
+			RBC_Reference_Price_Below_Cost = "N" and
+			BPC_Bad_Price_Candidate_Flag = "N" and
+			((VDC_WEB_FLAG = "N"  and Code_Path Ne '40') OR (Code_Path = '40')) and
+			Chain_Status_Flag = "Y"
+	group by dp_department;   
+quit;
+
+proc sql;
+	create table WORK.Coll_excl_Count as
+	select dp_department,
+	  count(distinct dp_sku) as sku_ct,
+	  "Coll_excl_SKU" as Type length=20
+	from WORK.Exception_List_ALL
+	where   MAP_FLAG = "N" and
+			EM_FLAG = "N" and
+			Current_Promo_Flag = "N" and Upcoming_Promo_Filter = "N" and
+			((Store_Inv_Flag = "N" and Code_Path Ne '40') OR (UOH_Inv500_Flag = "N" and Code_Path = '40')) and
+			Post_Price_Flag = "Rok" and
+			BBM_Buyer_Below_Min_Flag = "N" and
+			PPC_Permanent_Price_Change_Flag = "N" and
+			RBC_Reference_Price_Below_Cost = "N" and
+			BPC_Bad_Price_Candidate_Flag = "N" and
+			((VDC_WEB_FLAG = "N"  and Code_Path Ne '40') OR (Code_Path = '40')) and
+			Chain_Status_Flag = "N" and
+			Coll_excl_Flag = "Y"
+	group by dp_department;   
+quit;
+
+proc sql;
+	create table WORK.Post_Filter_check_Count as
+	select dp_department,
+	  count(distinct dp_sku) as sku_ct,
+	  "PF_SKU" as Type length=20
+	from WORK.Exception_List_ALL
+	where 	MAP_FLAG = "N" and
+			EM_FLAG = "N" and
+			Current_Promo_Flag = "N" and Upcoming_Promo_Filter = "N" and
+			((Store_Inv_Flag = "N" and Code_Path Ne '40') OR (UOH_Inv500_Flag = "N" and Code_Path = '40')) and
+			Post_Price_Flag = "Rok" and
+			BBM_Buyer_Below_Min_Flag = "N" and
+			PPC_Permanent_Price_Change_Flag = "N" and
+			RBC_Reference_Price_Below_Cost = "N" and
+			BPC_Bad_Price_Candidate_Flag = "N" and
+			((VDC_WEB_FLAG = "N"  and Code_Path Ne '40') OR (Code_Path = '40')) and
+			Chain_Status_Flag = "N" and
+			Coll_excl_Flag = "N"
+	group by dp_department;   
+quit;
+
+proc sql;
+	create table WORK.Recos_Count as
+	select department_cd as dp_department,
+	  count(distinct sku_num) as sku_ct,
+	  "Recos_SKU" as Type length=20
+	from WORK.Reco_Report
+	group by dp_department;   
+quit;
+
+/*Other SKUs excluded in MSWP Logic */
+proc sql;  
+	create table WORK.MSWP_Multiple_MSWP_Count as
+	select dp_department,
+	  count(distinct dp_SKU) as sku_ct,
+	  "Multiple_MSWP_SKU" as Type length=20
+	from WORK.MSWP_Non_Dup_SKUs  
+	where 	Multiple_MSWPs_Flag = "Y"
+	group by dp_department;
+ 
+	create table WORK.MSWP_Multiple_DP_Recos_Count as
+	select dp_department,
+	  count(distinct dp_SKU) as sku_ct,
+	  "Multiple_DP_Reco_SKU" as Type length=20
+	from WORK.MSWP_Non_Dup_SKUs  
+	where 	Multiple_MSWPs_Flag = "N" and	
+			Multiple_DP_Recos_Flag = "Y"
+	group by dp_Department;
+
+	create table WORK.MSWP_Multiple_BBBMin_Count as
+	select dp_department,
+	  count(distinct dp_SKU) as sku_ct,
+	  "Multiple_BBBMin_SKU" as Type length=20
+	from WORK.MSWP_Non_Dup_SKUs  
+	where 	Multiple_MSWPs_Flag = "N" and	
+			Multiple_DP_Recos_Flag = "N" and
+			Multiple_BBBMin_Flag = "Y"
+	group by dp_Department;
+
+	create table WORK.MSWP_Multiple_Cost_Count as
+	select dp_department,
+	  count(distinct dp_SKU) as sku_ct,
+	  "Multiple_Cost_SKU" as Type length=20
+	from WORK.MSWP_Non_Dup_SKUs  
+	where 	Multiple_MSWPs_Flag = "N" and	
+			Multiple_DP_Recos_Flag = "N" and
+			Multiple_BBBMin_Flag = "N" and
+			Multiple_Cost_Flag = "Y"
+	group by dp_Department;
+
+	create table WORK.MSWP_Final_Set_Count as
+	select dp_department,
+	  count(distinct dp_SKU) as sku_ct,
+	  "Final_Set_SKU" as Type length=20
+	from WORK.Final_Set_MSWP   
+	group by dp_Department;
+
+	/* How many SKUS we are adding back in to price entire collection */
+	create table WORK.MSWP_RECOS_SKUs as
+	select dp_department,
+	  count(distinct DP_SKU) as sku_ct,
+	  "Final_Reco_MSWP_SKU" as Type length=20
+	from WORK.Final_Reco_MSWP
+	group by dp_department;
+run;
+
+
+/*Putting it all together*/
+proc sql; 
+	create table WORK.ALL_DATA as
+	select t1.dp_department,
+	  t1.DEPARTMENT_NAME,
+	  t1.sku_ct as JDA_SKU,
+	  t1.sku_ct - t2.sku_ct as WO_IS_SKU,
+	  t2.sku_ct as Dist_Pim_SKU,
+	  t3.sku_ct as Comp_Match_SKU,
+	  sum(t2.sku_ct, - t3.sku_ct) as NO_Comp_Match_SKU,
+	  t4.sku_ct as Post_Promo_SKU,
+	  t3.sku_ct = t4.sku_ct as CHECK2,
+	  t555.sku_ct as Exc_List_SKU,
+	  t5.sku_ct as Priced_Right_SKU,
+	  t6.sku_ct as MAP_SKU,
+	  t7.sku_ct as EM_SKU,
+	  t8.sku_ct as Promos_SKU,
+	  sum(t12.sku_ct, t1240.sku_ct) as Store_Inv_SKU,
+	  t13.sku_ct as At_BBBMin_SKU,
+	  t14.sku_ct as Price_Increases_SKU,
+	  t15.sku_ct as BBMin_SKU,
+	  t16.sku_ct as PPC_SKU,
+	  t17.sku_ct as RBC_SKU,
+	  t18.sku_ct as BPC_SKU,
+	  t10.sku_ct as VDC_WEB_SKU_SKU,
+	  t11.sku_ct as Chain_Status_SKU,
+	  t11a.sku_ct as Coll_excl_SKU,
+	  sum(t3.sku_ct, - t555.sku_ct) as CP0_SKU,
+	  t181.sku_ct as Post_filter_SKU,
+	  t19.sku_ct as Recos_SKU,
+
+	  t20.sku_ct as MSWP_Multiple_MSWP_SKU,
+ 	  t21.sku_ct as MSWP_Multiple_DP_Reco_SKU,
+	  t22.sku_ct as MSWP_Multiple_BBBMin_SKU,
+	  t23.sku_ct as MSWP_Multiple_Cost_SKU,
+	  t30.sku_ct as MSWP_Final_Set_SKU,	
+	  t24.sku_ct as Final_Reco_MSWP_SKU,
+
+	  &today as Date
+	from WORK.JDA_Count t1
+	left join WORK.DPIM_Count t2 on t1.dp_department=t2.dp_department
+	left join WORK.Join_Count t3 on t1.dp_department=t3.dp_department
+	left join WORK.Remove_Promo_SKUs_Count t4 on t1.dp_department=t4.dp_department
+	left join WORK.Priced_Right_Count t5 on t1.dp_department=t5.dp_department
+	left join WORK.Exc_List_Count t555 on t1.dp_department=t555.dp_department	
+	left join WORK.MAP_Count t6 on t1.dp_department=t6.dp_department
+	left join WORK.EM_Count t7 on t1.dp_department=t7.dp_department
+	left join WORK.Promos_Count t8 on t1.dp_department=t8.dp_department
+	left join WORK.VDC_WEB_Count t10 on t1.dp_department=t10.dp_department
+	left join WORK.Chain_Status_Count t11 on t1.dp_department=t11.dp_department
+	left join WORK.Coll_excl_Count t11a on t1.dp_department=t11a.dp_department
+	left join WORK.Store_Inv_Count t12 on t1.dp_department=t12.dp_department
+	left join WORK.Store_Inv_CP40_Count t1240 on t1.dp_department=t1240.dp_department
+	left join WORK.At_BBBMin_Count t13 on t1.dp_department=t13.dp_department
+	left join Work.Price_Increases_Count t14 on t1.dp_department=t14.dp_department
+	left join WORK.BBMin_Count t15 on t1.dp_department=t15.dp_department
+	left join WORK.PPC_Count t16 on t1.dp_department=t16.dp_department
+	left join WORK.RBC_Count t17 on t1.dp_department=t17.dp_department
+	left join WORK.BPC_Count t18 on t1.dp_department=t18.dp_department
+	left join WORK.Post_Filter_check_Count t181 on t1.dp_department=t181.dp_department
+	left join WORK.Recos_Count t19 on t1.dp_department=t19.dp_department
+	left join WORK.MSWP_Multiple_MSWP_Count t20 on t1.dp_department=t20.dp_department
+	left join WORK.MSWP_Multiple_DP_Recos_Count t21 on t1.dp_department=t21.dp_department
+	left join WORK.MSWP_Multiple_BBBMin_Count t22 on t1.dp_department=t22.dp_department
+	left join WORK.MSWP_Multiple_Cost_Count t23 on t1.dp_department=t23.dp_department
+	left join WORK.MSWP_RECOS_SKUs t24 on t1.dp_department=t24.dp_department
+	left join WORK.MSWP_Final_Set_Count t30 on t1.dp_department=t30.dp_department;
+run;
+
+/* Replace . with 0 */
+data WORK.ALL_DATA;
+   set WORK.ALL_DATA;
+   array change _numeric_;
+   do over change;
+      if change=. then change=0;
+      end;
+run ;
+
+/* Putting it together and calculating the waterfall*/
+proc Sql;
+	Create Table WORK.WATERFALL as
+	Select t1.Date,
+	  t1.DP_DEPARTMENT,
+	  t1.DEPARTMENT_NAME,
+	  t1.Dist_Pim_SKU as JDA_SKU,       /* Count of initial distinct skus */
+	  t1.NO_Comp_Match_SKU,
+	  t1.Comp_Match_SKU, /* Count of skus have competitor matches  */  	  
+	  sum(t2.BBB_Min_SKU, t4.BBB_Min_SKU) as BBB_Min_SKU,
+
+	  sum(t2.Guard_Rails_SKU, t4.Guard_Rails_SKU) as Guard_Rails_SKU,
+
+	  sum(t2.Position_Rules_SKU, t4.Position_Rules_SKU) as Position_Rules_SKU,
+
+	  sum(t2.Max_Wkly_Ch_SKU, t4.Max_Wkly_Ch_SKU) as Max_Wkly_Ch_SKU,
+
+	  sum(t2.Overall_Change_SKU, t4.Overall_Change_SKU) as Overall_Change_SKU,
+
+	  sum(t2.Rounding_Rules_SKU, t4.Rounding_Rules_SKU) as Rounding_Rules_SKU,
+
+	  sum(t2.Post_Filter_SKU, t4.Post_Filter_SKU) as Post_Filter_SKU,
+	  sum(t2.Post_Filter_SKU, t4.Post_Filter_SKU)= t1.Post_filter_SKU as Post_Filter_CHECK,
+
+	  t1.Priced_Right_SKU,
+	  t1.MAP_SKU,
+	  t1.EM_SKU,
+	  t1.Promos_SKU,
+	  t1.Store_Inv_SKU,
+	  t1.At_BBBMin_SKU,
+	  t1.Price_Increases_SKU,
+	  t1.BBMin_SKU,
+	  t1.PPC_SKU,
+	  t1.RBC_SKU,
+	  t1.BPC_SKU,
+	  t1.VDC_WEB_SKU_SKU,
+	  t1.Chain_Status_SKU,
+	  t1.Coll_excl_SKU,
+	  t1.CP0_SKU,
+
+	  t1.MSWP_Multiple_MSWP_SKU,
+	  t1.MSWP_Multiple_DP_Reco_SKU,
+	  t1.MSWP_Multiple_BBBMin_SKU,
+	  t1.MSWP_Multiple_Cost_SKU,
+	  t4.Post_Filter_SKU = sum(t1.MSWP_Multiple_MSWP_SKU, t1.MSWP_Multiple_DP_Reco_SKU, t1.MSWP_Multiple_BBBMin_SKU,
+	  				t1.MSWP_Multiple_Cost_SKU, t1.MSWP_Final_Set_SKU) as CHECK_MSWP,
+
+	  t1.Final_Reco_MSWP_SKU - t1.MSWP_Final_Set_SKU as MSWP_add_back_SKU,	
+
+	  t1.Recos_SKU as Reco_File_SKU
+	from WORK.ALL_DATA t1
+	left join WORK.Waterfall_1 t2 on t1.dp_department = t2.dp_department
+	left join WORK.WATERFALL_3 t4 on t1.dp_department = t4.dp_department;
+
+quit;
+
+
+/*Calculating the Waterfall Steps*/
+proc Sql;
+	Create Table WORK.WATERFALL_RESULTS as
+	Select t1.Date,
+	  t1.dp_department,
+	  t1.DEPARTMENT_NAME,
+	  t1.JDA_SKU  Label = 'Initial JDA' as Inital_SKU_Count,
+	  (-1)* t1.Priced_Right_SKU Label = 'Priced Right' as Priced_right_SKU_Count,
+	  (-1)* t1.no_comp_match_SKU Label = 'No Comp Matches' as No_Comp_SKU_Count,
+	  (-1)* t1.MAP_SKU Label = 'MAP' as MAP_SKU_Count,
+	  (-1)* t1.EM_SKU Label = 'Event Manager' as EM_SKU_Count,
+	  (-1)* t1.Promos_SKU Label = 'Promo SKUs' as Promo_SKU_Count,
+	  (-1)* t1.Store_Inv_SKU Label = 'Store Inv'  as Store_Inv_SKU_Count,
+	  (-1)* t1.At_BBBMin_SKU Label = 'at BBB Min' as At_BBBMin_SKU_Count,
+	  (-1)* t1.Price_Increases_SKU Label = 'N/A Price Increases' as Price_Increases_SKU_Count,
+	  (-1)* t1.BBMin_SKU Label = 'Buyer Below Min' as BBM_SKU_Count,
+	  (-1)* t1.PPC_SKU Label = 'Permanent Price Change' as PPC_SKU_Count,
+	  (-1)* t1.RBC_SKU Label = 'Comp Below Cost' as RBC_SKU_Count,
+	  (-1)* t1.BPC_SKU Label = 'Bad Price Candidate'  as BPC_SKU_Count,
+
+	  (-1)* sum(t1.VDC_WEB_SKU_SKU, t1.Chain_Status_SKU , t1.Coll_excl_SKU,
+	  			t1.CP0_SKU, t1.MSWP_Multiple_MSWP_SKU, t1.MSWP_Multiple_DP_Reco_SKU, 
+		     	t1.MSWP_Multiple_BBBMin_SKU, t1.MSWP_Multiple_Cost_SKU, 
+	 			-t1.MSWP_add_back_SKU)  Label = 'Other Excl/Add-Backs' as Other_Excl_SKU_Count,	  
+	  (-1)* t1.Reco_File_SKU Label = 'Reco File' as RECO_FILE_SKU_Count   
+	from WORK.WATERFALL t1;
+Quit;
+
+/* Replace . with 0 */
+data WORK.WATERFALL_RESULTS;
+   set WORK.WATERFALL_RESULTS;
+   array change _numeric_;
+   do over change;
+      if change=. then change=0;
+      end;
+run ;
+
+ods listing close;
+ods graphics/width=10in;
+ods pdf  file="&water_dir./DY_Pricing_Waterfall_&today.&indicator..pdf";                               
+options orientation=landscape;
+
+/*Creating DP-level Plots from the data*/
+proc Sql;
+	Create Table WORK.WATERFALL_RESULTS_ALL as
+	Select Date,
+	  sum(Inital_SKU_Count) Label = 'Initial JDA' as Inital_SKU_Count,
+	  sum(Priced_right_SKU_Count) Label = 'Priced Right' as Priced_right_SKU_Count,
+	  sum(No_Comp_SKU_Count) Label = 'No Comp Matches' as No_Comp_SKU_Count,
+	  sum(MAP_SKU_Count) Label = 'MAP' as MAP_SKU_Count,
+	  sum(EM_SKU_Count) Label = 'Event Manager' as EM_SKU_Count,
+	  sum(Promo_SKU_Count) Label = 'Promo SKUs' as Promo_SKU_Count,
+	  sum(Store_Inv_SKU_Count) Label = 'Store Inv'  as Store_Inv_SKU_Count,
+	  sum(At_BBBMin_SKU_Count) Label = 'at BBB Min' as At_BBBMin_SKU_Count,
+	  sum(Price_Increases_SKU_Count) Label = 'N/A Price Increases' as Price_Increases_SKU_Count,
+	  sum(BBM_SKU_Count) Label = 'Buyer Below Min' as BBM_SKU_Count,
+	  sum(PPC_SKU_Count) Label = 'Permanent Price Change' as PPC_SKU_Count,
+	  sum(RBC_SKU_Count) Label = 'Comp Below Cost' as RBC_SKU_Count,
+	  sum(BPC_SKU_Count) Label = 'Bad Price Candidate'  as BPC_SKU_Count,
+	  sum(Other_Excl_SKU_Count)  Label = 'Other Excl/Add-Backs' as Other_excl_SKU_Count,
+	  sum(RECO_FILE_SKU_Count) Label = 'Reco File' as RECO_FILE_SKU_Count   
+	from WORK.WATERFALL_RESULTS
+	group by Date;
+Quit;
+
+/*Get the variables we want to include in the charts*/
+proc transpose data=WORK.WATERFALL_RESULTS_ALL 
+out= WORK.Data_For_Charts prefix=sku_ct name=Type;
+var Inital_SKU_Count
+	Priced_right_SKU_Count
+	No_Comp_SKU_Count
+	MAP_SKU_Count
+	EM_SKU_Count
+	Promo_SKU_Count
+	Store_Inv_SKU_Count
+	At_BBBMin_SKU_Count
+	Price_Increases_SKU_Count
+	BBM_SKU_Count
+	PPC_SKU_Count
+	RBC_SKU_Count
+	BPC_SKU_Count
+	Other_Excl_SKU_Count;
+run;
+
+/*change the format to include the , for thousands*/
+data WORK.Data_For_Charts;
+	set WORK.Data_For_Charts;
+	format sku_ct1 comma10.0;
+run;
+
+/*Chart, at DP level. 0 buckets are excluded from chart */
+title1 "Daily SKU Exclusions Waterfall As Of &today_wf &indicator"; 
+title2 "Dynamic Pricing Engine Level"; 
+proc sgplot data= WORK.Data_For_Charts noautolegend;
+where sku_ct1 ne 0;
+waterfall  category=_label_ response=sku_ct1 /colorgroup=Type dataskin=sheen datalabel name='label'
+	 barwidth=0.9 finalbartickvalue='RECO FILE';
+   xaxis display=(nolabel) FITPOLICY=SPLIT/*fitpolicy=splitalways */; 
+   yaxis grid display=(nolabel);
+run;
+
+/*Creating Department-level Plots from the data*/
+/*Get the variables we want to include in the charts*/
+proc transpose data=WORK.WATERFALL_RESULTS 
+out= WORK.Data_For_Charts prefix=sku_ct name=Type;
+var Inital_SKU_Count
+	Priced_right_SKU_Count
+	No_Comp_SKU_Count
+	MAP_SKU_Count
+	EM_SKU_Count
+	Promo_SKU_Count
+	Store_Inv_SKU_Count
+	At_BBBMin_SKU_Count
+	Price_Increases_SKU_Count
+	BBM_SKU_Count
+	PPC_SKU_Count
+	RBC_SKU_Count
+	BPC_SKU_Count
+	Other_Excl_SKU_Count;
+by dp_department DEPARTMENT_NAME;
+run;
+
+/*change the format to include the , for thousands*/
+data WORK.Data_For_Charts;
+	set WORK.Data_For_Charts;
+	format sku_ct1 comma10.0;
+run;
+
+
+
+
+/****************************************/
+/*Creating DP-level Plots from the VDC SKUS*/
+proc Sql;
+	Create Table WORK.WATERFALL_RESULTS_ALL_VDC as
+	Select Date,
+	  sum(Inital_SKU_Count) Label = 'Initial JDA' as Inital_SKU_Count,
+	  sum(Priced_right_SKU_Count) Label = 'Priced Right' as Priced_right_SKU_Count,
+	  sum(No_Comp_SKU_Count) Label = 'No Comp Matches' as No_Comp_SKU_Count,
+	  sum(MAP_SKU_Count) Label = 'MAP' as MAP_SKU_Count,
+	  sum(EM_SKU_Count) Label = 'Event Manager' as EM_SKU_Count,
+	  sum(Promo_SKU_Count) Label = 'Promo SKUs' as Promo_SKU_Count,
+	  sum(Store_Inv_SKU_Count) Label = 'Store Inv'  as Store_Inv_SKU_Count,
+	  sum(At_BBBMin_SKU_Count) Label = 'at BBB Min' as At_BBBMin_SKU_Count,
+	  sum(Price_Increases_SKU_Count) Label = 'N/A Price Increases' as Price_Increases_SKU_Count,
+	  sum(BBM_SKU_Count) Label = 'Buyer Below Min' as BBM_SKU_Count,
+	  sum(PPC_SKU_Count) Label = 'Permanent Price Change' as PPC_SKU_Count,
+	  sum(RBC_SKU_Count) Label = 'Comp Below Cost' as RBC_SKU_Count,
+	  sum(BPC_SKU_Count) Label = 'Bad Price Candidate'  as BPC_SKU_Count,
+	  sum(Other_Excl_SKU_Count)  Label = 'Other Excl/Add-Backs' as Other_excl_SKU_Count,
+	  sum(RECO_FILE_SKU_Count) Label = 'Reco File' as RECO_FILE_SKU_Count   
+	from WORK.WATERFALL_RESULTS_VDC
+	group by Date;
+Quit;
+
+proc transpose data=WORK.WATERFALL_RESULTS_ALL_VDC 
+out= WORK.Data_For_Charts prefix=sku_ct name=Type;
+var Inital_SKU_Count
+	Priced_right_SKU_Count
+	No_Comp_SKU_Count
+	MAP_SKU_Count
+	EM_SKU_Count
+	Promo_SKU_Count
+	Store_Inv_SKU_Count
+	At_BBBMin_SKU_Count
+	Price_Increases_SKU_Count
+	BBM_SKU_Count
+	PPC_SKU_Count
+	RBC_SKU_Count
+	BPC_SKU_Count
+	Other_Excl_SKU_Count;
+run;
+
+/*change the format to include the , for thousands*/
+data WORK.Data_For_Charts;
+	set WORK.Data_For_Charts;
+	format sku_ct1 comma10.0;
+run;
+
+/*Chart, at DP level. 0 buckets are excluded from chart */
+title1 "Daily SKU Exclusions Waterfall As Of &today_wf &indicator"; 
+title2 "Dynamic Pricing Engine Level"; 
+title3 "VDC SKUs"; 
+proc sgplot data= WORK.Data_For_Charts noautolegend;
+where sku_ct1 ne 0;
+waterfall  category=_label_ response=sku_ct1 /colorgroup=Type dataskin=sheen datalabel name='label'
+	 barwidth=0.9 finalbartickvalue='RECO FILE';
+   xaxis display=(nolabel) FITPOLICY=SPLIT/*fitpolicy=splitalways */; 
+   yaxis grid display=(nolabel);
+run;
+
+
+
+/*Creating DP-level Plots from the WEB ONLY SKUs*/
+proc Sql;
+	Create Table WORK.WATERFALL_RESULTS_ALL_WEBONLY as
+	Select Date,
+	  sum(Inital_SKU_Count) Label = 'Initial JDA' as Inital_SKU_Count,
+	  sum(Priced_right_SKU_Count) Label = 'Priced Right' as Priced_right_SKU_Count,
+	  sum(No_Comp_SKU_Count) Label = 'No Comp Matches' as No_Comp_SKU_Count,
+	  sum(MAP_SKU_Count) Label = 'MAP' as MAP_SKU_Count,
+	  sum(EM_SKU_Count) Label = 'Event Manager' as EM_SKU_Count,
+	  sum(Promo_SKU_Count) Label = 'Promo SKUs' as Promo_SKU_Count,
+	  sum(Store_Inv_SKU_Count) Label = 'Store Inv'  as Store_Inv_SKU_Count,
+	  sum(At_BBBMin_SKU_Count) Label = 'at BBB Min' as At_BBBMin_SKU_Count,
+	  sum(Price_Increases_SKU_Count) Label = 'N/A Price Increases' as Price_Increases_SKU_Count,
+	  sum(BBM_SKU_Count) Label = 'Buyer Below Min' as BBM_SKU_Count,
+	  sum(PPC_SKU_Count) Label = 'Permanent Price Change' as PPC_SKU_Count,
+	  sum(RBC_SKU_Count) Label = 'Comp Below Cost' as RBC_SKU_Count,
+	  sum(BPC_SKU_Count) Label = 'Bad Price Candidate'  as BPC_SKU_Count,
+	  sum(Other_Excl_SKU_Count)  Label = 'Other Excl/Add-Backs' as Other_excl_SKU_Count,
+	  sum(RECO_FILE_SKU_Count) Label = 'Reco File' as RECO_FILE_SKU_Count   
+	from WORK.WATERFALL_RESULTS_WEBONLY
+	group by Date;
+Quit;
+
+/*Get the variables we want to include in the charts*/
+proc transpose data=WORK.WATERFALL_RESULTS_ALL_WEBONLY 
+out= WORK.Data_For_Charts prefix=sku_ct name=Type;
+var Inital_SKU_Count
+	Priced_right_SKU_Count
+	No_Comp_SKU_Count
+	MAP_SKU_Count
+	EM_SKU_Count
+	Promo_SKU_Count
+	Store_Inv_SKU_Count
+	At_BBBMin_SKU_Count
+	Price_Increases_SKU_Count
+	BBM_SKU_Count
+	PPC_SKU_Count
+	RBC_SKU_Count
+	BPC_SKU_Count
+	Other_Excl_SKU_Count;
+run;
+
+/*change the format to include the , for thousands*/
+data WORK.Data_For_Charts;
+	set WORK.Data_For_Charts;
+	format sku_ct1 comma10.0;
+run;
+
+/*Chart, at DP level. 0 buckets are excluded from chart */
+title1 "Daily SKU Exclusions Waterfall As Of &today_wf &indicator"; 
+title2 "Dynamic Pricing Engine Level"; 
+title3 "WEB ONLY SKUs"; 
+proc sgplot data= WORK.Data_For_Charts noautolegend;
+where sku_ct1 ne 0;
+waterfall  category=_label_ response=sku_ct1 /colorgroup=Type dataskin=sheen datalabel name='label'
+	 barwidth=0.9 finalbartickvalue='RECO FILE';
+   xaxis display=(nolabel) FITPOLICY=SPLIT/*fitpolicy=splitalways */; 
+   yaxis grid display=(nolabel);
+run;
+
+
+
+
+/*Creating DP-level Plots from the IN STORE SKUS*/
+proc Sql;
+	Create Table WORK.WATERFALL_RESULTS_ALL_INSTORE as
+	Select Date,
+	  sum(Inital_SKU_Count) Label = 'Initial JDA' as Inital_SKU_Count,
+	  sum(Priced_right_SKU_Count) Label = 'Priced Right' as Priced_right_SKU_Count,
+	  sum(No_Comp_SKU_Count) Label = 'No Comp Matches' as No_Comp_SKU_Count,
+	  sum(MAP_SKU_Count) Label = 'MAP' as MAP_SKU_Count,
+	  sum(EM_SKU_Count) Label = 'Event Manager' as EM_SKU_Count,
+	  sum(Promo_SKU_Count) Label = 'Promo SKUs' as Promo_SKU_Count,
+	  sum(Store_Inv_SKU_Count) Label = 'Store Inv'  as Store_Inv_SKU_Count,
+	  sum(At_BBBMin_SKU_Count) Label = 'at BBB Min' as At_BBBMin_SKU_Count,
+	  sum(Price_Increases_SKU_Count) Label = 'N/A Price Increases' as Price_Increases_SKU_Count,
+	  sum(BBM_SKU_Count) Label = 'Buyer Below Min' as BBM_SKU_Count,
+	  sum(PPC_SKU_Count) Label = 'Permanent Price Change' as PPC_SKU_Count,
+	  sum(RBC_SKU_Count) Label = 'Comp Below Cost' as RBC_SKU_Count,
+	  sum(BPC_SKU_Count) Label = 'Bad Price Candidate'  as BPC_SKU_Count,
+	  sum(Other_Excl_SKU_Count)  Label = 'Other Excl/Add-Backs' as Other_excl_SKU_Count,
+	  sum(RECO_FILE_SKU_Count) Label = 'Reco File' as RECO_FILE_SKU_Count   
+	from WORK.WATERFALL_RESULTS_INSTORE
+	group by Date;
+Quit;
+
+/*Get the variables we want to include in the charts*/
+proc transpose data=WORK.WATERFALL_RESULTS_ALL_INSTORE 
+out= WORK.Data_For_Charts prefix=sku_ct name=Type;
+var Inital_SKU_Count
+	Priced_right_SKU_Count
+	No_Comp_SKU_Count
+	MAP_SKU_Count
+	EM_SKU_Count
+	Promo_SKU_Count
+	Store_Inv_SKU_Count
+	At_BBBMin_SKU_Count
+	Price_Increases_SKU_Count
+	BBM_SKU_Count
+	PPC_SKU_Count
+	RBC_SKU_Count
+	BPC_SKU_Count
+	Other_Excl_SKU_Count;
+run;
+
+/*change the format to include the , for thousands*/
+data WORK.Data_For_Charts;
+	set WORK.Data_For_Charts;
+	format sku_ct1 comma10.0;
+run;
+
+/*Chart, at DP level. 0 buckets are excluded from chart */
+title1 "Daily SKU Exclusions Waterfall As Of &today_wf &indicator"; 
+title2 "Dynamic Pricing Engine Level"; 
+title3 "IN STORE SKUs"; 
+proc sgplot data= WORK.Data_For_Charts noautolegend;
+where sku_ct1 ne 0;
+waterfall  category=_label_ response=sku_ct1 /colorgroup=Type dataskin=sheen datalabel name='label'
+	 barwidth=0.9 finalbartickvalue='RECO FILE';
+   xaxis display=(nolabel) FITPOLICY=SPLIT/*fitpolicy=splitalways */; 
+   yaxis grid display=(nolabel);
+run;
+
+
+/********************************************/
+
+
+
+/*Creating Department-level Plots from the data*/
+/*Get the variables we want to include in the charts*/
+proc transpose data=WORK.WATERFALL_RESULTS 
+out= WORK.Data_For_Charts prefix=sku_ct name=Type;
+var Inital_SKU_Count
+	Priced_right_SKU_Count
+	No_Comp_SKU_Count
+	MAP_SKU_Count
+	EM_SKU_Count
+	Promo_SKU_Count
+	Store_Inv_SKU_Count
+	At_BBBMin_SKU_Count
+	Price_Increases_SKU_Count
+	BBM_SKU_Count
+	PPC_SKU_Count
+	RBC_SKU_Count
+	BPC_SKU_Count
+	Other_Excl_SKU_Count;
+by dp_department DEPARTMENT_NAME;
+run;
+
+/*change the format to include the , for thousands*/
+data WORK.Data_For_Charts;
+	set WORK.Data_For_Charts;
+	format sku_ct1 comma10.0;
+run;
+
+/*Chart, at department level. 0 buckets are excluded from chart */
+title1 "Daily SKU Exclusions Waterfall As Of &today_wf &indicator "; 
+
+proc sgplot data= WORK.Data_For_Charts noautolegend;
+where sku_ct1 ne 0;
+waterfall category=_label_ response=sku_ct1 /colorgroup=Type dataskin=sheen datalabel name='label'
+  barwidth=0.9 finalbartickvalue='RECO FILE';
+   xaxis display=(nolabel) FITPOLICY=SPLIT/*fitpolicy=splitalways */;
+   yaxis grid display=(nolabel);
+by dp_department DEPARTMENT_NAME;
+run;
+
+ods pdf  close;
+ods listing close;
+	
+/* checking that the waterfall counts are correct */
+proc sql;
+Create table work.wf_check as 
+        Select DISTINCT t1.date , 
+                t1.DP_DEPARTMENT, 
+	  			t1.CHECK2,
+				T2.Post_Filter_CHECK,
+				T2.CHECK_MSWP,
+				SUM(t3.Inital_SKU_Count, 
+					t3.Priced_right_SKU_Count,
+					t3.No_Comp_SKU_Count,
+					t3.MAP_SKU_Count,
+	  				T3.EM_SKU_Count,
+					t3.Promo_SKU_Count,
+					t3.Store_Inv_SKU_Count,
+					T3.At_BBBMin_SKU_Count,
+					t3.Price_Increases_SKU_Count,
+					t3.BBM_SKU_Count,
+					t3.PPC_SKU_Count,
+					t3.RBC_SKU_Count,
+					t3.BPC_SKU_Count,
+					T3.Other_Excl_SKU_Count,
+				    T3.RECO_FILE_SKU_CounT )=0  AS CHECK3
+        from WORK.ALL_DATA t1 
+		LEFT JOIN WORK.WATERFALL T2 ON t1.DP_DEPARTMENT = t2.DP_DEPARTMENT
+		LEFT JOIN WORK.WATERFALL_RESULTS T3 ON t1.DP_DEPARTMENT = t3.DP_DEPARTMENT; 
+quit;
+
+  
+
+/*counting how many depts have counting mismatches*/
+proc sql noprint;
+	select count (*)
+	into : nn
+	from WORK.wf_check
+	where  Check2 = 0 or 
+		  Post_Filter_CHECK = 0 OR
+		  CHECK_MSWP = 0 OR		
+		  Check3 = 0;
+quit;
+
+
+
+
+/*macro to send email, in case of a waterfall counting mismatch*/
+
+%macro sasmail;
+	data _null_;
+	FILENAME MYMAIL EMAIL
+	to= ("carmen.yanazzo@bedbath.com","Brian.Hansen@bedbath.com","Nancy.Crossen@bedbath.com","sizor.mohanty@bedbath.com", "xi.kang@bedbath.com")
+	subject= "Waterfall Mismatch &today1";
+	file mymail;
+	put " ";
+	put "Notification of waterfall counting mismatch ";
+	put " ";
+	run;
+%mend sasmail;
+
+%macro sendme;
+	%if &nn = 0 %then %do;
+				%end;
+				%else %do;	
+					%sasmail
+				%end;
+%mend sendme;
+
+%sendme;
