@@ -1,0 +1,230 @@
+#1 Approach (Dendogram) july 2016
+
+
+# install necessary packages all at the same time :
+ Needed <- c("tm", "SnowballCC", "RColorBrewer", "ggplot2", "wordcloud", "biclust", 
+    "cluster", "igraph", "fpc")
+ install.packages(Needed, dependencies = TRUE)
+
+
+installed.packages ()
+install.packages('RColorBrewer','fpc')
+install.packages('syuzhet')
+install.packages('lubridate')
+install.packages('scales')
+install.packages('reshape2')
+install.packages('dplR')
+library(syuzhet)
+library(lubridate)
+library(scales)
+library(reshape2)
+library(dplyr)
+
+cname <- file.path("C:/texts/test")# create file path from default character components; separated by "/"
+cname
+dir(cname) # Lists all files in the directory.  
+remove.packages("tm")
+library(tm)# loads R text mining package
+docs<-Corpus(DirSource(cname))# DirSource creates a directory source
+# Corpus is a collection of documents. This is the main sructure of managing documents in TM package
+summary(docs)# lists length, class and mode
+inspect(docs)
+docs<-tm_map(docs,removePunctuation)# tm_map function transforms text based on the command
+inspect(docs)
+# remove numbers after classifying words in a hierarchy for PPU
+# docs<-tm_map(docs,removeNumbers)
+# inspect(docs)
+#lower case
+docs<-tm_map(docs,tolower)
+inspect(docs)
+docs<-tm_map(docs,removeWords,stopwords("english"))
+inspect(docs)
+install.packages('SnowballC')
+library('SnowballC')
+#docs<-tm_map(docs, PlainTextDocument)
+docs1<-tm_map(docs,stemDocument)# linking all derived words to root word is called stemming e.g. "catlike" is linked to "cat"
+inspect(docs1)
+docs1
+docs<-tm_map(docs, stripWhitespace)
+inspect(docs)
+docs<-tm_map(docs, PlainTextDocument)
+dtm<-DocumentTermMatrix(docs)
+# Transform dtm to matrix to data frame - df is easier to work with
+mat.df <- as.data.frame(data.matrix(dtm), stringsAsfactors = FALSE)
+# Column bind category (known classification)
+mat.df <- cbind(mat.df, df$Category)
+# Change name of new column to "category"
+colnames(mat.df)[ncol(mat.df)] <- "category"
+
+
+words<-c("toaster","toast","toastr","grapes","grapevine")
+words<-c("Six","sixer","grapes","grape sugar")
+wordStem(words,language="porter")
+
+
+#2 : Positive / negative score approach
+tdm<-TermDocumentMatrix(docs) #2
+tdm #2
+inspect(tdm)#2
+get_nrc_sentiment("Prices are cheaper than what you'll find at drugstores in Manhattan.")#2
+get_nrc_sentiment("prices are good considering you are in Manhattan")#2
+comments<-readLines('C:/Texts/comments1.txt')#2
+comments#2
+sentiment<-get_nrc_sentiment(comments)#2
+sentiment #2 
+
+all_comments<-readLines('C:/All_Comments/All_comments.txt')#2
+all_comments#2
+all_sentiment<-get_nrc_sentiment(all_comments)#2
+all_sentiment #2 
+
+sentimentTotals <- data.frame(colSums(all_sentiment[,c(1:10)]))#2
+sentimentTotals#2
+names(sentimentTotals) <- "count" #2
+sentimentTotals <- cbind("sentiment" = rownames(sentimentTotals), sentimentTotals) #2
+rownames(sentimentTotals) <- NULL #2
+ggplot(data = sentimentTotals, aes(x = sentiment, y = count)) + 
+        geom_bar(aes(fill = sentiment), stat = "identity") +
+        theme(legend.position = "none") +
+        xlab("Sentiment") + ylab("Total Count") + ggtitle("Total Sentiment Score for All Tweets")#2
+
+
+
+
+#1 Approach ("Dendogram") continued
+
+dtm<-DocumentTermMatrix(docs)
+inspect(dtm)
+dtm
+freq<-colSums(as.matrix(dtm))
+length(freq)
+ord<-order(freq)
+ord
+dtms<-removeSparseTerms(dtm,0.01)# terms available in greater than (1-0.1) % of docs will be available
+inspect(dtms)
+freq[head(ord)]
+freq[tail(ord)]
+wf<-data.frame(word=names(freq),freq=freq)
+head(wf)
+install.packages('ggplot2')
+library(ggplot2)
+p <- ggplot(subset(wf, freq>=1), aes(word, freq))    
+p <- p + geom_bar(stat="identity")   
+p <- p + theme(axis.text.x=element_text(angle=45, hjust=1))  
+p
+findAssocs(dtm, c("prices" , "good"), corlimit=0.0)# (times the words occur together) / (total number of words) : P (b/a)
+findAssocs(dtms, "prices", corlimit=0.0)
+library(wordcloud)
+
+set.seed(142)
+wordcloud(names(freq), freq, min.freq=1, scale=c(5,0.1), colors=brewer.pal(6,"Dark2")) 
+dtmss<-removeSparseTerms(dtm,0.15)# remove terms that do not occur in less than 85% of the documents
+inspect(dtmss)
+library(cluster)   
+d <- dist(t(dtmss), method="euclidian")  
+d 
+fit <- hclust(d=d, method="ward.D")  
+# ward's method is a linkage method by which the clusters are agglomerated from the leaves level to the branch and then the trunck
+# here the distance between clusters is the sum of the deviations from the centroid----http://support.minitab.com/en-us/minitab/17/topic-library/modeling-statistics/multivariate/item-and-cluster-analyses/linkage-methods/
+fit    
+plot(fit, hang=-1)
+
+library(fpc)   
+d <- dist(t(dtmss), method="euclidian")   
+d
+kfit <- kmeans(d, 2)   
+clusplot(as.matrix(d), kfit$cluster, color=T, shade=T, labels=2, lines=0)
+
+
+#3 Approach: Using Machine Learning tools (Naive Baye's and SVM)
+
+install.packages('RTextTools')
+install.packages('e1071')
+library('RTextTools')
+library('e1071')
+
+pos_comments =  rbind(
+  c('Prices are cheaper', 'positive'),
+  c('Amazing prices', 'positive'),
+  c('Well organized and reasonably priced', 'positive'),
+  c('prices are great', 'positive'),
+  c('prices are just so awesome', 'positive')
+)
+
+neg_comments = rbind(
+  c('prices are worst', 'negative'),
+  c('prices are better at CVS', 'negative'),
+  c('everythign is ridiculously expensive', 'negative'),
+  c('prices are very high', 'negative'),
+  c('prices suck', 'negative')
+)
+
+test_comments = rbind(
+  c('Im also pretty sure the prices at CVS when factoring the ExtraBucks, are better', 'negative'),
+  c('Lots of great buys like almost giveaway prices on certain things', 'positive'),
+  c('Prices are great when the items are on sale. Otherwise the items here are really expensive', 'negative'),
+  c('Definitely has the cheaper prices beers in Kips Bay', 'positive'),
+  c('prices are not awesome', 'negative')
+)
+
+comments = rbind(pos_comments, neg_comments, test_comments)
+comments
+
+
+# build dtm
+matrix= create_matrix(comments[,1], language="english", 
+                      removeStopwords=FALSE, removeNumbers=TRUE, 
+                      stemWords=FALSE) 
+matrix
+# train the model
+mat = as.matrix(matrix)
+classifier = naiveBayes(mat[1:10,], as.factor(comments[1:10,2]) )
+
+# test the validity
+predicted = predict(classifier, mat[11:15,]); predicted
+table(comments[11:15, 2], predicted)
+recall_accuracy(comments[11:15, 2], predicted)
+predicted
+
+# build the data to specify response variable, training set, testing set.
+container = create_container(matrix, as.numeric(as.factor(comments[,2])),
+                             trainSize=1:10, testSize=11:15,virgin=FALSE)
+models = train_models(container, algorithms=c("MAXENT" , "SVM", "RF", "BAGGING", "TREE"))
+results = classify_models(container, models)
+
+# accuracy table
+table(as.numeric(as.factor(comments[11:15, 2])), results[,"FORESTS_LABEL"]) # 1= negative 2 = positive
+table(as.numeric(as.factor(comments[11:15, 2])), results[,"MAXENTROPY_LABEL"])
+table(as.numeric(as.factor(comments[11:15, 2])), results[,"TREE_LABEL"])
+table(as.numeric(as.factor(comments[11:15, 2])), results[,"BAGGING_LABEL"])
+table(as.numeric(as.factor(comments[11:15, 2])), results[,"SVM_LABEL"])
+
+# recall accuracy
+recall_accuracy(as.numeric(as.factor(comments[11:15, 2])), results[,"FORESTS_LABEL"])
+recall_accuracy(as.numeric(as.factor(comments[11:15, 2])), results[,"MAXENTROPY_LABEL"])
+recall_accuracy(as.numeric(as.factor(comments[11:15, 2])), results[,"TREE_LABEL"])
+recall_accuracy(as.numeric(as.factor(comments[11:15, 2])), results[,"BAGGING_LABEL"])
+recall_accuracy(as.numeric(as.factor(comments[11:15, 2])), results[,"SVM_LABEL"])
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
