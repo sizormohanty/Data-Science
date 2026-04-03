@@ -1,0 +1,104 @@
+title ’Jayashree Satapathy’;
+proc contents data=raw_data;run;
+
+proc univariate data=raw_data;
+  var Average_freshman_graduation_rate Capital_outlay Instruction_Expenditure other_expenses
+ Per_eligible_free_or_reduc_lunch Poverty_rate_of_5_to_17_year Pupil_teacher_ratio_Fall_2012 Student_staff_ratio_Fall_2012;
+  histogram / cfill=gray;
+run;
+
+data raw_data1(rename=(Average_freshman_graduation_rate=Y
+ per_eligible_free_or_reduc_lunch=X6 
+ Poverty_rate_of_5_to_17_year=X7));
+set raw_data;
+X1=round(log10(Capital_outlay),0.01);
+X2=round(log10(Instruction_Expenditure),0.01);
+X3=round(log10(other_expenses),0.01);
+X4=round(log10(Pupil_teacher_ratio_Fall_2012),0.01);
+X5=round(log10(Student_staff_ratio_Fall_2012),0.01);
+label Average_freshman_graduation_rate='Avg_grad_rate'
+       X1='log_cap_outlay' X2='log_inst_Exp' X3='Log_other_exp' X4='Log_pupil_teacher' X5='log_stud_staff'
+        Per_eligible_free_or_reduc_lunch='Reduced_lunch' 
+ Poverty_rate_of_5_to_17_year='Poverty_rate' ;
+drop Capital_outlay Instruction_Expenditure other_expenses Pupil_teacher_ratio_Fall_2012 Student_staff_ratio_Fall_2012;
+run;
+
+proc corr data=raw_data1;
+var Y X1 X2 X3 X4 X5 X6 X7;
+run;
+/*
+
+proc reg;
+model Y=X1/selection=rsquare adjrsq cp press pcorr1;
+proc reg;
+model Y=X2/selection=rsquare adjrsq cp press pcorr1;
+proc reg;
+model Y=X3/selection=rsquare adjrsq cp press pcorr1;
+proc reg;
+model Y=X4/selection=rsquare adjrsq cp press pcorr1;
+proc reg;
+model Y=X1 X2/selection=rsquare adjrsq cp press pcorr1;
+proc reg;
+model Y=X1 X3/selection=rsquare adjrsq cp press pcorr1;
+proc reg;
+model Y=X1 X4/selection=rsquare adjrsq cp press pcorr1;
+proc reg;
+model Y=X2 X3/selection=rsquare adjrsq cp press pcorr1;
+proc reg;
+model Y=X2 X4/selection=rsquare adjrsq cp press pcorr1;
+proc reg;
+model Y=X3 X4/selection=rsquare adjrsq cp press pcorr1;
+proc reg;
+model Y=X1 X2 X3/selection=rsquare adjrsq cp press pcorr1;
+proc reg;
+model Y=X1 X2 X4 /selection=rsquare adjrsq cp press pcorr1;
+proc reg;
+model Y=X1 X3 X4/selection=rsquare adjrsq cp press pcorr1;*/
+proc contents data=raw_Data1;run;
+proc reg;
+model Y=X1 X2 X3 X4 X5 X6 X7/selection=rsquare adjrsq cp press pcorr1;
+/*
+proc reg data=raw_data1;
+model Y=X1 X2 X3 X4 X5 X6 X7/selection=rsquare adjrsq cp press pcorr1;
+
+proc reg;
+model Y=X1 X2 X3 X4 X5 X6 X7 X8 X9 X10 X11/selection=rsquare adjrsq cp press pcorr1;*/
+proc reg data=raw_data1;
+model Y=X1 X2 X3 X4 X5 X6 X7/selection=stepwise;
+
+proc reg;
+model Y=X1 X2 X3 X4 X5 X6 X7 /selection=forward;
+proc reg;
+model Y=X1 X2 X3 X4 X5 X6 X7 /selection=backward;
+proc reg data=raw_data1;
+model Y=X1 X2 X3 X4 X5 X6 X7 /clb cli clm;
+plot pred.*Y;
+plot Y*(X1 X2 X3 X4 X5 X6 X7);
+plot residual.*(X1 X2 X3 X4 X5 X6 X7);
+plot lcl.*(X1 X2 X3 X4 X5 X6 X7) ucl.*(X1 X2 X3 X4 X5 X6 X7)/overlay;
+plot lclm.*(X1 X2 X3 X4 X5 X6 X7) uclm.*(X1 X2 X3 X4 X5 X6 X7)/overlay;
+model Y=X1 X2 X3 X4 X5 X6 X7 /lackfit XPX I p r;
+***/The next two lines test if betta1=0 and if betta1=1/***;
+test X1=0,X2=0,X3=0,X4=0,X5=0,X6=0,X7=0;
+test X1+X2+X3+X4+X5+X6+X7=1;
+***/This section of code gives you 3 different tests for equality of variance, generates
+residuals and also does the Shapiro Wilks test on the residuals/***;
+proc glm data=raw_data1;
+class X1 X2 X3 X4 X5 X6 X7;
+model Y=X1 X2 X3 X4 X5 X6 X7;
+means X1 X2 X3 X4 X5 X6 X7 /hovtest=levene;
+means X1 X2 X3 X4 X5 X6 X7 /hovtest=bartlett;
+means X1 X2 X3 X4 X5 X6 X7 /hovtest=obrien;
+proc reg;
+model Y=X2 X3 X6 X7/p;
+output out=resid r=r p=p;
+plot (p. r.)*(X2 X3 X6 X7) p.*Y r.*p.;
+proc univariate data=resid normal plot;
+var r;
+qqplot r /normal;
+proc print;
+proc plot;
+plot Y*(X1 X2 X3 X4 X5 X6 X7);
+plot order*Y;
+run;
+quit;
