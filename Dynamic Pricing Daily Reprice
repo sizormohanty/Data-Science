@@ -1,0 +1,211 @@
+
+
+/*********************************************************************************** 
+FILE NAME:      	Daily Pricing Reprice Process
+CREATION DATE:  	04/26/2016
+AUTHOR:         	Sizor Mohanty  
+PURPOSE:        	Define variables and libnames here .
+09/19/2016 - changes for same day    CY                   
+02/15/2017 - new directory structure NC
+09/08/2017  - use quant_stg in Netezza instead of analytics_stg
+11/7/2017  - change promo days and EM days to 5 for Black Fri.  
+***********************************************************************************/
+options SASTRACE=',,,sa' SASTRACELOC=SASLOG NOSTSUFFIX obs=max mprint symbolgen mlogic 
+        stimer fullstimer msglevel=i debug="PREFETCH(unique_mac,2,SEQUENTIAL)"
+        spdedebug='cache_disable'  
+compress=YES;
+
+/* 
+%let nzServer = njundnetez319; 
+%include "/home/cbadmart/codes/prodanalytics_ref.sas"; 
+
+*/
+
+%include "/home/cbadmart/codes/universal_codes.sas";
+
+
+%let nzName=&user;
+%let nzPass=&pw;
+%let db=quant_stg;
+%let findb=analytics_tb;
+%let nzanaltb=analytics_tb;
+%let qt = %str(%');
+%let promo_days=5;
+%let EM_days=5;
+%let pgmpath=/sasdata/data04/price_auto/codes;  
+
+
+%let NTZAstr = connect to netezza as NTZA 
+	( user=&user. password=&pw. server="&nzServer." database="&db."); 
+
+%macro nzSqlDrop(table);
+  %local tableExists;
+  %let databaseName = %scan(&table.,1,.);
+  %let tableName = %scan(&table.,2,.);
+  %let qt=%str(%');
+  %let qry = select count(*) as table_exists from _v_table where upper(database)=upper(&qt.&databaseName.&qt.) and upper(tablename)=upper(&qt.&tableName&qt.);
+  %nzsql(&qry.,table_exists);
+  proc sql noprint; select table_exists into :tableExists from table_exists; quit;
+  %if &tableExists.=1  %then %do;
+    %nzsql(drop table &table.)
+  %end;
+%mend;
+
+
+%macro nzsql(query,out,defdb=&db.);
+  proc sql noerrorstop;
+    options nomprint;
+    connect to netezza as nz1 (user=&nzName. password=&nzPass.
+               server="&nzServer." database="&defdb.");
+    options mprint;
+    %if &out.=%then %do;
+      execute ( &query. ) by nz1;
+    %end; %else %do;
+      create table &out. as select * from connection to nz1 (&query.);
+    %end;
+        %let sqlerror=&sqlxrc.; /*Used for Error-Handling*/
+    disconnect from nz1;
+  quit;
+/*Error Handling*/
+%put &sqlerror.;
+%if &sqlerror. ne 0 %then %do;
+        %abort cancel;
+%end;
+%mend nzsql;
+
+/* Define all libnames here   */
+
+libname edw_vw netezza user="&myuser."  password="&mypw" server="&nzServer"
+ database=edw_mcf_vw ;
+
+libname stgntz netezza user="&myuser."  password="&mypw" server="&nzServer"
+ database=quant_stg ;
+
+libname tbntz netezza user="&myuser."  password="&mypw" server="&nzServer"
+ database=analytics_tb;    
+
+
+
+
+libname TMP00001 "/sasdata/data07/PricingMgr/Archive/Price_Archive";
+libname TMPNANCY "/sasdata/data07/PricingMgr/Archive";
+libname a "/sasdata/data07/PricingMgr/Archive/Reco_Reports";
+libname TMP00006 "/sasdata/data07/PricingMgr/Exclusions";
+libname wf_sku "/sasdata/data07/PricingMgr/waterfall";
+libname TEST_DIR "/sasdata/data07/PricingMgr/price_testing";
+
+
+data param;
+     set stgntz.DY_PRICE_PARAMETER;
+run;
+
+/*  Get pricing parameters      */
+
+
+proc sql noprint;
+     select minimum_days, weekly_change, overall_change,  max_overall_discount
+       into   :min_day, :weekly_chg, :overall_chg, :max_overall_disc
+     from param;
+quit;
+
+%let minimum_days=&min_day;
+%let weekly_change=&weekly_chg;
+%let overall_change=&overall_chg;
+%let Max_Overall_Discount=&max_overall_disc; 
+
+
+%let weekly_change_ftg_test=0.50;
+%let overall_change_ftg_test=1.00;
+%let Max_Overall_Discount_ftg_test=1.00; 
+
+
+
+
+%let PPC_var = 0.5;
+%let BPC_var = 0.36;
+
+
+/*  Set up directories   */
+
+%let input_dir=/sasdata/data07/PricingMgr/input;
+%let output_dir=/sasdata/data07/PricingMgr/output;
+%let water_dir=/sasdata/data07/PricingMgr/Archive/waterfall;                  
+%let reco_dir=/sasdata/data07/PricingMgr/Archive/Reco_Reports; 
+%let arc_dir=/sasdata/data07/PricingMgr/Archive/IT_files;
+%let wf_sku_dir=/sasdata/data07/PricingMgr/waterfall;
+%let test_dir=/sasdata/data07/PricingMgr/price_testing;
+
+
+%let today=%sysfunc(today(),yymmddn8.);
+%let today1=&today;
+%let today_wf=%sysfunc(today(),mmddyy10.);
+%let exception_dt=&today;
+%let today2=%sysfunc(today());
+%let now=%sysfunc(time(),tod.);
+%let time=%sysfunc(compress(&now,':'));  
+
+
+
+
+/*cdy - calculating if an AM or a PM code run  */
+%let Time = %sysfunc(time(),time8.0); /*getting current time*/
+%let Time_HH = %scan(&Time.,1,:); /*getting current hour*/
+%put &time_hh;
+
+data WORK.indicator;
+	if (&time_hh>=2 and &time_hh<14) then 
+			do;/*AM Run*/
+				indicator="AM";
+				Reco_start_date = &today2;
+				Reco_end_date = Reco_start_date + &minimum_days;
+				emailtext = cat("today ", put(Reco_start_date,MMDDYY10.));
+				scrape_date_max= &today2;
+				scrape_date_min= &today2 - 1;
+			end;
+	else do;/*PM Run*/
+			indicator="PM";
+			Reco_start_date = &today2 + 1;
+			Reco_end_date = Reco_start_date + &minimum_days;
+			emailtext = cat("tomorrow ",put(Reco_start_date,MMDDYY10.));
+			scrape_date_max= &today2;
+			/*CDY- in the future, scrape date min will only be today. for now, it is today-1*/
+			scrape_date_min= &today2 - 1;
+		end;
+run;
+
+/*putting them into variables*/
+proc sql noprint;
+     select indicator, Reco_start_date, Reco_end_date, emailtext,scrape_date_max,scrape_date_min
+       into   :indicator, :Reco_start_date, :Reco_end_date, :emailtext, :scrape_date_max, :scrape_date_min
+     from WORK.indicator;
+quit;
+
+/*TODAY*/
+%let mth=%sysfunc(putn(%sysfunc(month(%sysfunc(intnx(day,%sysfunc(today()), -0)))),z2.));
+%let dy=%sysfunc(putn(%sysfunc(day(%sysfunc(intnx(day,%sysfunc(today()), -0)))),z2.));
+%let yr=%sysfunc(year(%sysfunc(intnx(day,%sysfunc(today()), -0))));
+%put &mth. &dy. &yr.;
+
+/*YESTERDAY*/
+%let mth_yesterday=%sysfunc(putn(%sysfunc(month(%sysfunc(intnx(day,%sysfunc(today()), -1)))),z2.));
+%let dy_yesterday=%sysfunc(putn(%sysfunc(day(%sysfunc(intnx(day,%sysfunc(today()), -1)))),z2.));
+%let yr_yesterday=%sysfunc(year(%sysfunc(intnx(day,%sysfunc(today()), -1))));
+%put &mth_yesterday. &dy_yesterday. &yr_yesterday.;
+
+%let reco_file_AM = reco_report_&mth.&dy.&yr.am;
+%put &reco_file_AM;
+ %let file_check_AM=0; 
+%put file_check_AM;
+
+%let reco_file_PM = reco_report_&mth_yesterday.&dy_yesterday.&yr_yesterday.pm;
+%put &reco_file_PM ;
+%let file_check_PM=0; 
+%put &file_check_PM; 
+
+%let wf_sku_file_AM = BI_SKU_&mth.&dy.&yr.am;
+%let wf_sku_file_PM_save = BI_SKU_&mth.&dy.&yr.pm;
+%let wf_sku_file_PM = BI_SKU_&mth_yesterday.&dy_yesterday.&yr_yesterday.pm;
+%let wf_sku_file=BI_SKU_&mth.&dy.&yr.;
+
+
+
