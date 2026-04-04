@@ -1,6 +1,5 @@
 
 /* Sizor 12/1/2016*/
-
 /*Getting the Reference Price only for the SKUs with Code Path 3*/
 PROC SQL;
    CREATE TABLE WORK.Reference_Price_MSWP AS 
