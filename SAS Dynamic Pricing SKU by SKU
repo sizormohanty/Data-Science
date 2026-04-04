@@ -6,7 +6,6 @@ OPTIONS  SASTRACE=',,,sa' SASTRACELOC=SASLOG NOSTSUFFIX /*mprint symbolgen
    spdedebug='cache_disable' ;
 
 /*Calculating freight Rate*/
-
 /*Common SKUs*/
 PROC SQL;
    CREATE TABLE WORK.Common_SKUs AS 
