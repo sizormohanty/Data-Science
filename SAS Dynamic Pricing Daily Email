@@ -30,9 +30,6 @@ filename mymail email
          attach=("&reco_dir/dy_price_&mth.&dy.&yr..zip" )
         attach= ("&reco_dir/summary_&today..txt")
                  ;
-
-
-
 run;
 /*  for same day pricing change dates and wording to today  */
 
