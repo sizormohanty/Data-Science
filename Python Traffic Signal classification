@@ -69,6 +69,21 @@ plt.figure()
 plt.imshow(X_train[i])
 plt.figure()
 plt.imshow(X_train_gray_norm[i].squeeze(), cmap = 'gray')
+from tensorflow.keras import datasets, layers, models
+
+model = models.Sequential()
+
+model.add(layers.Conv2D(6, (5,5), activation = 'relu', input_shape = (32,32,1)))
+model.add(layers.AveragePooling2D(2,2))
+#model.add(layers.Dropout(0.2))
+model.add(layers.Conv2D(16, (5,5), activation = 'relu'))
+model.add(layers.AveragePooling2D(2,2))
+model.add(layers.Flatten())
+model.add(layers.Dense(120, activation = 'relu'))
+model.add(layers.Dense(84, activation = 'relu'))
+model.add(layers.Dense(43, activation = 'softmax'))
+
+model.summary()
 
 
 
