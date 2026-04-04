@@ -7,6 +7,7 @@ proc univariate data=raw_data;
   histogram / cfill=gray;
 run;
 
+
 data raw_data1(rename=(Average_freshman_graduation_rate=Y
  per_eligible_free_or_reduc_lunch=X6 
  Poverty_rate_of_5_to_17_year=X7));
