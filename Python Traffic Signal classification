@@ -113,11 +113,13 @@ predicted_probabilities = model.predict(X_test_gray_norm)
 predicted_classes = np.argmax(predicted_probabilities, axis=1)
 y_true = y_test
 # error
-from sklearn.metrics import confusion_matrix
+"""from sklearn.metrics import confusion_matrix
 
 cm = confusion_matrix(y_true, predicted_classes)
 plt.figure(figsize = (25, 25))
-sns.heatmap(cm, annot = True)
+sns.heatmap(cm, annot = True)"""
+# Fix
+
 
 
 
