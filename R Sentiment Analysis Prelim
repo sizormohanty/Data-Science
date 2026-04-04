@@ -6,7 +6,6 @@
     "cluster", "igraph", "fpc")
  install.packages(Needed, dependencies = TRUE)
 
-
 installed.packages ()
 install.packages('RColorBrewer','fpc')
 install.packages('syuzhet')
