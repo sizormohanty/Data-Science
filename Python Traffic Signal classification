@@ -119,6 +119,24 @@ cm = confusion_matrix(y_true, predicted_classes)
 plt.figure(figsize = (25, 25))
 sns.heatmap(cm, annot = True)"""
 # Fix
+from sklearn.metrics import confusion_matrix
+
+cm = confusion_matrix(y_true, predicted_classes)
+plt.figure(figsize = (25, 25))
+sns.heatmap(cm, annot = True)
+L = 5
+W = 5
+
+fig, axes = plt.subplots(L, W, figsize = (12, 12))
+axes = axes.ravel()
+
+for i in np.arange(0, L*W):
+    axes[i].imshow(X_test[i])
+    axes[i].set_title('Prediction = {}\n True = {}'.format(predicted_classes[i], y_true[i]))
+    axes[i].axis('off')
+
+plt.subplots_adjust(wspace = 1)
+
 
 
 
