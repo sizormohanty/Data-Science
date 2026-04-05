@@ -117,4 +117,43 @@ prediction_dates = df['Date'].sort_values()[-prediction_count:]
 # Making prediction with Xgboost
 y_pred = stepwise_prediction(data, prediction_count, default_parameters)
 
+def concat_predictions(df, y_pred, prediction_dates):
 
+    '''Takes base dataframe + lists containing predicted dates and values
+    and returns a merged dataset with a predicted/actual column. Dataframe
+    can be used for visualization'''
+
+    # Creating dataframe for comparing predicted/actual values
+    df_comparison = df[['CMILES', 'Date']]
+    df_comparison['Method'] = 'Actual'
+
+    # Converting xgboost predictions to dataframe
+    xgboost_dict = {'CMILES': y_pred,
+                    'Date': prediction_dates,
+                    'Method': 'xgboost'}
+    xgboost_df = pd.DataFrame.from_dict(xgboost_dict)
+
+    # Appending predictions to comparison dataframe   
+    df_comparison = pd.concat([df_comparison, xgboost_df], ignore_index=True)
+
+    return df_comparison
+
+def graph_forecast(df_comparison, prediction_count):
+
+    '''Takes Dataframe containing both predicted + actual values, calculates the MAPE,
+    and displays a lineplot of the predicted versus actual values'''
+
+    # Calculating MAPE for xgboost
+    xgboost_mape = round(mean_absolute_percentage_error(df_comparison[df_comparison['Method']=='xgboost'].sort_values(by = ['Date'])['CMILES'],
+                                                        df_comparison.sort_values(by = ['Date'])[-prediction_count:]['CMILES']),3)
+
+    compare_fig = px.line(df_comparison, x = 'Date', y = 'CMILES', color='Method',
+                        title = 'Predicted vs Actual Traffic, MAPE: {mape}'.format(mape = xgboost_mape))
+    compare_fig.show()
+
+
+# Joining Actual vs predicted values
+df_comparison = concat_predictions(df, y_pred, prediction_dates)
+
+# Generating graph of actual vs predicted values
+graph_forecast(df_comparison, prediction_count)
