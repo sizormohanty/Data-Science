@@ -1,0 +1,40 @@
+/* 1. Calculate RFM Metrics */
+proc sql;
+    create table customer_rfm as
+    select customer_id,
+           max(order_date) as last_purchase,
+           today() - calculated last_purchase as recency,
+           count(order_id) as frequency,
+           sum(order_amount) as monetary
+    from orders
+    group by customer_id;
+quit;
+
+/* 2. Rank Metrics into Quintiles (1-5) */
+proc rank data=customer_rfm out=rfm_scored groups=5 descending;
+    var recency;
+    ranks r_score;
+run;
+/* Note: For Recency, lower is better (higher rank), 
+   so you may need to invert or use descending */
+proc rank data=rfm_scored out=rfm_scored groups=5;
+    var frequency monetary;
+    ranks f_score m_score;
+run;
+
+/* 3. Adjust scores to be 1-5 instead of 0-4 */
+data rfm_final;
+    set rfm_scored;
+    r_score = r_score + 1;
+    f_score = f_score + 1;
+    m_score = m_score + 1;
+    rfm_combined = 100*r_score + 10*f_score + 1*m_score;
+run;
+
+/* 4. Target Top Customers (e.g., r_score=5 and f_score=5) */
+data target_segment;
+    set rfm_final;
+    if r_score >= 4 and f_score >= 4 then target_group = 'High Value';
+    else if r_score = 1 then target_group = 'Churned';
+    else target_group = 'Medium/Low';
+run;
