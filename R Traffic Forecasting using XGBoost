@@ -1,1 +1,18 @@
+# run with https://colab.to/r in chrome browser for colab
+# Reading Data
+base_path =  os.getcwd()
+file_name = 'Traffic_Data.xlsx'
+total_path = base_path + '//Data//' 
+df = pd.read_excel(total_path + file_name, sheet_name='Sheet1')
+df.head(10) 
+# CMILES (our response variable), and Date
+# Filtering for just Oregon
+df = df[df['State'] == 'Oregon']
+df = df.sort_values(by = ['Date']).reset_index()
+
+# Graphing Data
+fig = px.scatter(df.reindex(), x="Date", y="CMILES", trendline="lowess",trendline_options=dict(frac=0.1),
+                  title = 'Miles Driven by Time - Oregon')
+fig.show()
+
 
