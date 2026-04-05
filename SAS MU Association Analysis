@@ -1,0 +1,347 @@
+APPENDIX 2: Code for Converting Excel sheets into SAS Datasets 
+
+This is the Code used to form the SAS Data set for the month of August 2010. Just as the individual excel data files of August 2010 were merged to form a single SAS Data set, similarly the data files of every month can be combined to form an annual SAS data set from February 2011 to February 2012.  
+
+*  This is 1-ImportDataFromExcel.sas; 
+
+*  Want all variables to be numeric except those with character data; 
+
+*********************************************************************************************; 
+
+ods listing; 
+
+Libname SASIn1 'C:\Users\Jayashree\Desktop\MU Bookstore\market basket analysis\monthly data\store 1'; 
+
+Libname SASOut1 'C:\Users\Jayashree\Desktop\MU Bookstore\market basket analysis\monthly data\store 1'; 
+
+*********************************************************************************************; 
+
+Proc Import  
+
+Datafile = 'C:\Users\Jayashree\Desktop\MU Bookstore\market basket analysis\monthly data\store 1\0811.xls'  
+
+DBMS=xls  Out = SASOut1.St1Aug_1_11 Replace;  
+
+Getnames=No; Sheet='08011011'; run; 
+
+Proc Import  
+
+Datafile = 'C:\Users\Jayashree\Desktop\MU Bookstore\market basket analysis\monthly data\store 1\0811.xls'  
+
+DBMS=xls  Out = SASOut1.St1Aug_2_11 Replace;  
+
+Getnames=No; Sheet='08111511'; run; 
+
+Proc Import  
+
+Datafile = 'C:\Users\Jayashree\Desktop\MU Bookstore\market basket analysis\monthly data\store 1\0811.xls'  
+
+DBMS=xls  Out = SASOut1.St1Aug_3_11 Replace;  
+
+Getnames=No; Sheet='08161711'; run; 
+
+Proc Import  
+
+Datafile = 'C:\Users\Jayashree\Desktop\MU Bookstore\market basket analysis\monthly data\store 1\0811.xls'  
+
+DBMS=xls  Out = SASOut1.St1Aug_4_11 Replace;  
+
+Getnames=No; Sheet='08182011'; run; 
+
+Proc Import  
+
+Datafile = 'C:\Users\Jayashree\Desktop\MU Bookstore\market basket analysis\monthly data\store 1\0811.xls'  
+
+DBMS=xls  Out = SASOut1.St1Aug_5_11 Replace;   
+
+Getnames=No; Sheet='08212211'; run; 
+
+Proc Import  
+
+Datafile = 'C:\Users\Jayashree\Desktop\MU Bookstore\market basket analysis\monthly data\store 1\0811.xls'  
+
+DBMS=xls  Out = SASOut1.St1Aug_6_11 Replace;  
+
+Getnames=No; Sheet='08232411'; run; 
+
+Proc Import  
+
+Datafile = 'C:\Users\Jayashree\Desktop\MU Bookstore\market basket analysis\monthly data\store 1\0811.xls'  
+
+DBMS=xls  Out = SASOut1.St1Aug_7_11 Replace;  
+
+Getnames=No; Sheet='08252711'; run; 
+
+Proc Import  
+
+Datafile = 'C:\Users\Jayashree\Desktop\MU Bookstore\market basket analysis\monthly data\store 1\0811.xls'  
+
+DBMS=xls  Out = SASOut1.St1Aug_8_11 Replace;  
+
+Getnames=No; Sheet='08283111'; run; 
+
+*********************************************************************************************; 
+
+data SASOut1.St1Aug11; 
+
+set  SASOut1.St1Aug_1_11  SASOut1.St1Aug_2_11  SASOut1.St1Aug_3_11  SASOut1.St1Aug_4_11  SASOut1.St1Aug_5_11  SASOut1.St1Aug_6_11 
+
+SASOut1.St1Aug_7_11 SASOut1.St1Aug_8_11; 
+
+Length 
+
+POS_VST_YTD $25 
+
+MERCH_SKU $21 
+
+MERCH_DESC $51 ; 
+
+POS_VST_YTD = 	A;  
+
+TRANS 		=	Input(B,12.0); 
+
+TRANS		=	TRANS + 103111000000; /*Want TRANS number that is unique across months*/ 
+
+DATE		=	C; 
+
+SASDate 	= 	Input(C,17.0); 
+
+SASDate		=	SASDate-21916; /*Ratex dates are numeric with Jan1, 1900 as day 1. The correct value to be substracted is 21916*/ 
+
+MERCH_CLASS = 	Input(D,14.0); 
+
+MERCH_SKU	=	E; 
+
+MERCH_DESC	=	F; 
+
+MERCH_DESC	=	Compress(MERCH_DESC);  /* Compress out blanks */ 
+
+MERCH_PRICE	=	Input(G,14.2); 
+
+QUANTITY	=	Input(H,14.0); 
+
+MERCH_COST	=	Input(I,14.0); 
+
+If Trans NE .;  /*Eliminates records with missing values*/ 
+
+Drop A B C D E F G H I Date; Run; 
+
+*********************************************************************************************; 
+
+**proc means data=SASOut4.St4Feb11Feb12; 
+
+**var merch_Price; **run; 
+
+*********************************************************************************************; 
+
+*  This is called 2-ImportDeptClassStructureFromExcel.sas; 
+
+*********************************************************************************************; 
+
+Libname SASDat 'C:\Users\Jayashree\Desktop\MU Bookstore\market basket analysis\other excel files'; 
+
+*********************************************************************************************; 
+
+Proc Import											/*Import Class & Dept Descriptions*/  
+
+DataFile='C:\Users\Jayashree\Desktop\MU Bookstore\market basket analysis\other excel files\DeptClassStructure2.xls'  
+
+Out=SASDat.DeptClassStructure2 DBMS=XLS Replace; Run; 
+
+*********************************************************************************************; 
+
+Data SASDat.DeptClassStructure3; 
+
+ Set SASDat.DeptClassStructure2; 
+
+DEPT_DESC= Compress(DEPT_DESC);     /*Removes blanks*/ 
+
+MERCH_CLASS_DESC= Compress(MERCH_CLASS_DESC);     /*Removes blanks*/ 
+
+If MERCH_CLASS NE . Then DEPT=Int(MERCH_CLASS/1000); Else DEPT=.; /*Calculate DEPT from MERCH_CLASS*/ Run; 
+
+*********************************************************************************************; 
+
+**Proc Means Data=SASDat.DeptClassStructure3; **Run; 
+
+*********************************************************************************************; 
+
+**proc contents data=SASDat.DeptClassStructure3; **run; 
+
+*  This is called 3-RemoveNegativeQuantity.sas;  
+
+*  This pgm removes negative transactions and their associated transaction if it is in the ; 
+
+*  same POV_VST_YTD and MERCH_SKU; 
+
+*  The strategy is to output multiple records based on QUANTITY and to output records with; 
+
+*  a negative number and positive number to separate files.  They're merged and only those; 
+
+*  records without a matching record from the negative temporary files are retained.; 
+
+*********************************************************************************************; 
+
+Libname SASDat 'C:\Users\Jayashree\Desktop\MU Bookstore\market basket analysis\other excel files'; 
+
+*********************************************************************************************; 
+
+Data SASDat.Mult_PosSt1Aug11 SASDat.Mult_NegSt1Aug11;/*naming convention-->put St# before date to identify store; by default it is store 1*/ 
+
+Set SASOut1.St1Aug11; 
+
+If Quantity NE . Then NQty=ABS(Quantity); Else NQty=0; 
+
+If Quantity GT 0 Then Do;					/*Output positive QUANTITY*/ 
+
+  Do I=1 to NQty; 
+
+  Quantity=1;  								/*Resets Quantity=1 for each record written out */ 
+
+  Output SASDat.Mult_PosSt1Aug11; End; End; 
+
+If Quantity EQ 0 Then Do; End; 
+
+If  Quantity LT 0 Then Do;					/*Output negative QUANTITY*/ 
+
+  Do I=1 to NQty; 
+
+  Quantity=-1;  							/*Resets Quantity=1 for each record written out */ 
+
+  Output SASDat.Mult_NegSt1Aug11; End; End; Run; 
+
+Proc Sort Data=SASDat.Mult_PosSt1Aug11;By POS_VST_YTD MERCH_SKU; Run; 
+
+Proc Sort Data=SASDat.Mult_NegSt1Aug11;By POS_VST_YTD MERCH_SKU; Run; 
+
+Data SASDat.MUBookstoreNetTransSt1Aug11 
+
+SASDat.MuBookstoreDeletesSt1Aug11; 
+
+ Merge 
+
+SASDat.Mult_PosSt1Aug11  (In=InPos) 
+
+SASDat.Mult_NegSt1Aug11  (In=InNeg)	; 
+
+By POS_VST_YTD MERCH_SKU; 
+
+/* Can eliminate Neg Trans if part of same trans */ 
+
+If InPos=1 and InNeg=0 Then Output SASDat.MUBookstoreNetTransSt1Aug11; 
+
+Else Output SASDat.MuBookstoreDeletesSt1Aug11;  
+
+Drop I NQty; Run; 
+
+Proc Sort Data=SASDat.MUBookstoreNetTransSt1Aug11; 
+
+By POS_VST_YTD MERCH_SKU; Run; 
+
+**Proc Means Data=SASDat.MUBookstoreNetTransSt4feb11feb12; **Run; 
+
+************************************************************; 
+
+*  This is called 4-PopulateDeptAndDeptDescription.sas; 
+
+*  Adds DEPT_DESC; 
+
+*********************************************************************************************; 
+
+Libname SASDat 'C:\Users\Jayashree\Desktop\MU Bookstore\market basket analysis\other excel files'; 
+
+*********************************************************************************************; 
+
+Data SASDat.DeptClassStructure4; 
+
+ Set SASDat.DeptClassStructure3; 
+
+If DEPT=10 Then DEPT_DESC='NewTextbooks'; 
+
+If DEPT=11 Then DEPT_DESC='UsedTextbooks'; 
+
+If DEPT=12 Then DEPT_DESC='ElectronicTextbooks'; 
+
+If DEPT=13 Then DEPT_DESC='CustomPublishing'; 
+
+If DEPT=20 Then DEPT_DESC='GeneralBooks'; 
+
+If DEPT=21 Then DEPT_DESC='ProfessionalBooks'; 
+
+If DEPT=22 Then DEPT_DESC='Music'; 
+
+If DEPT=24 Then DEPT_DESC='Calendars'; 
+
+If DEPT=26 Then DEPT_DESC='Magazines'; 
+
+If DEPT=31 Then DEPT_DESC='Electronics'; 
+
+If DEPT=32 Then DEPT_DESC='Supplies'; 
+
+If DEPT=33 Then DEPT_DESC='Medical/DentalSupplies'; 
+
+If DEPT=34 Then DEPT_DESC='Gifts'; 
+
+If DEPT=35 Then DEPT_DESC='GreetingCards'; 
+
+If DEPT=36 Then DEPT_DESC='Clothing'; 
+
+If DEPT=37 Then DEPT_DESC='Snacks'; 
+
+If DEPT=38 Then DEPT_DESC='Jewelry'; 
+
+If DEPT=39 Then DEPT_DESC='Health&Beauty'; 
+
+If DEPT=40 Then DEPT_DESC='Graduation'; 
+
+If DEPT=50 Then DEPT_DESC='Software'; 
+
+If DEPT=51 Then DEPT_DESC='Hardware'; 
+
+If DEPT=52 Then DEPT_DESC='ComputerSupplies'; 
+
+If DEPT=53 Then DEPT_DESC='Gaming'; 
+
+If DEPT=54 Then DEPT_DESC='Computers'; 
+
+If DEPT=56 Then DEPT_DESC='Safeware'; 
+
+If DEPT=57 Then DEPT_DESC='SiteLicenses'; 
+
+If DEPT=58 Then DEPT_DESC='ServiceParts'; 
+
+If DEPT=59 Then DEPT_DESC='Demo'; Run; 
+
+*********************************************************************************************; 
+
+**Proc Means Data=SASDat.DeptClassStructure4; **Run; 
+
+*  This is called 5-MergeNetTransactionsAndDeptStructure.sas;  
+
+*********************************************************************************************; 
+
+Libname SASDat 'C:\Users\Jayashree\Desktop\MU Bookstore\market basket analysis\other excel files'; 
+
+*********************************************************************************************; 
+
+Proc Sort Data=SASDat.MUBookstoreNetTransSt1Aug11; 
+
+By MERCH_CLASS; Run; 
+
+Proc Sort Data=SASDat.DeptClassStructure4; 
+
+By MERCH_CLASS; Run; 
+
+Data SASDat.MUBookstoreMerged_st1Aug11; 
+
+ Merge SASDat.MUBookstoreNetTransSt1Aug11  (In=TransData) 
+
+SASDat.DeptClassStructure4  	 (In=DeptData); 
+
+By MERCH_CLASS; 
+
+If TransData=1 and DeptData=1 Then Output SASDat.MUBookstoreMerged_St1Aug11; Run; 
+
+**Proc Means Data=SASDat.MUBookstoreMerged_St4feb11feb12; **Run; 
+
+**proc contents data =SASDat.MUBookstoreMerged_St4feb11feb12 varnum; **run; 
