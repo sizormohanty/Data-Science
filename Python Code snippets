@@ -1,3 +1,116 @@
+/* sample functions and remove outliers */
+
+import math
+
+# Sample data
+speed_data = [60, 45, 50, 70, 55]
+acceleration_data = [2.5, 1.2, 1.8, 3.0, 1.5]
+braking_data = [1.5, 0.8, 1.2, 2.5, 0.9]
+cornering_data = [20, 15, 12, 22, 14]
+lane_discipline_data = [2, 1, 1, 3, 1]
+tailgating_data = [3, 1, 2, 4, 1]
+turn_signal_data = [10, 12, 11, 8, 13]
+
+# Scoring parameters
+scoring_weights = {
+    "speed": 0.25,
+    "acceleration": 0.15,
+    "braking": 0.15,
+    "cornering": 0.15,
+    "lane_discipline": 0.10,
+    "tailgating": 0.10,
+    "turn_signal": 0.10
+}
+
+# Function to normalize values to a 0-100 scale
+def normalize(values):
+    min_value = min(values)
+    max_value = max(values)
+    return [(value - min_value) / (max_value - min_value) * 100 for value in values]
+
+# Scoring functions
+def calculate_score(data, scoring_function):
+    return scoring_function(data)
+
+def calculate_speed_score(speed):
+    return 100 - normalize(speed)
+
+def calculate_acceleration_score(acceleration):
+    return normalize(acceleration)
+
+def calculate_braking_score(braking):
+    return normalize(braking)
+
+def calculate_cornering_score(cornering):
+    return normalize(cornering)
+
+def calculate_lane_discipline_score(lane_discipline):
+    return 100 - normalize(lane_discipline)
+
+def calculate_tailgating_score(tailgating):
+    return normalize(tailgating)
+
+def calculate_turn_signal_score(turn_signal):
+    return 100 - normalize(turn_signal)
+
+
+
+# Calculate component scores
+speed_scores = calculate_score(speed_data, calculate_speed_score)
+acceleration_scores = calculate_score(acceleration_data, calculate_acceleration_score)
+braking_scores = calculate_score(braking_data, calculate_braking_score)
+cornering_scores = calculate_score(cornering_data, calculate_cornering_score)
+lane_discipline_scores = calculate_score(lane_discipline_data, calculate_lane_discipline_score)
+tailgating_scores = calculate_score(tailgating_data, calculate_tailgating_score)
+turn_signal_scores = calculate_score(turn_signal_data, calculate_turn_signal_score)
+
+# Compute overall driver scores
+driver_scores = [
+    scoring_weights["speed"] * speed_score +
+    scoring_weights["acceleration"] * acceleration_score +
+    scoring_weights["braking"] * braking_score +
+    scoring_weights["cornering"] * cornering_score +
+    scoring_weights["lane_discipline"] * lane_discipline_score +
+    scoring_weights["tailgating"] * tailgating_score +
+    scoring_weights["turn_signal"] * turn_signal_score
+    for speed_score, acceleration_score, braking_score, cornering_score, lane_discipline_score, tailgating_score, turn_signal_score in zip(
+        speed_scores, acceleration_scores, braking_scores, cornering_scores, lane_discipline_scores, tailgating_scores, turn_signal_scores
+    )
+]
+
+print(driver_scores)
+
+
+# Outlier handling
+
+import numpy as np
+
+# Sample data
+speed_data = [60, 45, 50, 120, 55, 200, 42]
+
+# Function to calculate the IQR
+def calculate_iqr(data):
+    q1 = np.percentile(data, 25)
+    q3 = np.percentile(data, 75)
+    iqr = q3 - q1
+    return iqr, q1, q3
+
+# Function to remove outliers using the IQR method
+def remove_outliers_iqr(data):
+    iqr, q1, q3 = calculate_iqr(data)
+    lower_bound = q1 - 1.5 * iqr
+    upper_bound = q3 + 1.5 * iqr
+    return [x for x in data if lower_bound <= x <= upper_bound]
+
+# Remove outliers from speed data
+filtered_speed_data = remove_outliers_iqr(speed_data)
+
+print("Original data:", speed_data)
+print("Filtered data:", filtered_speed_data)
+
+
+
+
 {
   "nbformat": 4,
   "nbformat_minor": 0,
