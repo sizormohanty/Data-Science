@@ -1,0 +1,186 @@
+import pandas as pd
+import lightningchart as lc
+import time
+import numpy as np
+# Fill missing values for numerical and categorical columns
+numerical_columns = ['Traffic_Density', 'Speed_Limit', 'Number_of_Vehicles', 'Driver_Alcohol', 'Driver_Age', 'Driver_Experience', 'Accident']
+for column in numerical_columns:
+    df[column].fillna(df[column].median(), inplace=True)
+categorical_columns = ['Weather', 'Road_Type', 'Time_of_Day', 'Accident_Severity', 'Road_Condition', 'Vehicle_Type', 'Road_Light_Condition']
+for column in categorical_columns:
+    df[column] = df[column].fillna(df[column].mode()[0])
+
+# Map time of day and group data
+time_of_day_mapping = {'Morning': 1, 'Afternoon': 2, 'Evening': 3, 'Night': 4}
+df['time_of_day_index'] = df['Time_of_Day'].map(time_of_day_mapping)
+numerical_columns = ['Traffic_Density', 'Speed_Limit', 'Number_of_Vehicles', 'Driver_Age', 'Driver_Experience', 'Accident']
+processed_data = {col: df.groupby('time_of_day_index')[col].mean().reset_index() for col in numerical_columns}
+
+# Initialize chart and axes
+chart = lc.ChartXY(theme=lc.Themes.TurquoiseHexagon, title='Metrics and Related Accidents Across Time of Day')
+legend = chart.add_legend()
+
+# Add line and point series for each metric
+for i, (col, df_col) in enumerate(processed_data.items()):
+    axis_x = chart.add_x_axis(stack_index=i).set_title(col.replace('_', ' ').title())
+    series = chart.add_line_series(x_axis=axis_x, data_pattern='ProgressiveY').add(df_col[col].tolist(), df_col['time_of_day_index'].tolist())
+    series.set_name(f'{col.title()} (Average)')
+    chart.add_point_series(x_axis=axis_x).add(df_col[col].tolist(), df_col['time_of_day_index'].tolist())
+
+# Configure Y-axis for time of day
+y_axis = chart.get_default_y_axis().set_title('Time of Day')
+for time, index in time_of_day_mapping.items():
+    y_axis.add_custom_tick().set_value(index).set_text(time)
+y_axis.set_interval(1, 4)
+chart.open('browser')
+
+severity_counts = df['Accident_Severity'].value_counts().reset_index()
+severity_counts.columns = ['category', 'value']
+chart = lc.BarChart(
+    vertical=True,
+    theme=lc.Themes.Dark,
+    title='Accident Severity Distribution'
+)
+chart.set_data(severity_counts.to_dict(orient='records'))
+chart.set_palette_colors(
+    steps=[{'value': i / (len(severity_counts) - 1), 'color': color} 
+           for i, color in enumerate(['#FF5733', '#33FF57', '#3357FF'])]
+)
+chart.set_sorting('disabled')
+chart.set_value_label_display_mode('insideBar')
+chart.open('browser')
+
+weather_accident_counts = df['Weather'].value_counts()
+slices = [{'name': weather, 'value': count} for weather, count in weather_accident_counts.items()]
+chart = lc.PieChart(
+    title='Impact of Weather Conditions on Accident Frequency',
+    theme=lc.Themes.Black
+)
+chart.add_slices(slices)
+chart.set_inner_radius(30)
+chart.add_legend(data=chart)
+chart.open('browser')
+
+
+import lightningchart as lc
+import numpy as np
+from scipy.interpolate import griddata
+chart = lc.Chart3D(theme=lc.Themes.Dark, title='3D Surface Grid Series')
+def create_surface_chart(chart, x, y, z, grid_size):
+    X_grid, Y_grid = np.meshgrid(
+        np.linspace(min(x), max(x), grid_size),
+        np.linspace(min(y), max(y), grid_size)
+    )
+    Z_grid = griddata((x, y), z, (X_grid, Y_grid), method='cubic')
+    Z_grid[np.isnan(Z_grid)] = np.nanmean(z)
+    surface_series = chart.add_surface_grid_series(columns=Z_grid.shape[1], rows=Z_grid.shape[0])
+    surface_series.set_start(x=min(x), z=min(y))
+    surface_series.set_end(x=max(x), z=max(y))
+    surface_series.invalidate_height_map(Z_grid.tolist())
+    surface_series.invalidate_intensity_values(Z_grid.tolist())
+    chart.get_default_x_axis().set_title('Weather Condition')
+    chart.get_default_y_axis().set_title('Road Type')
+    chart.get_default_z_axis().set_title('Accident Severity')
+create_surface_chart(chart, x=df['Weather'], y=df['Road_Type'], z=df['Accident'], grid_size=100)
+chart.open('browser')
+
+
+df_encoded = df.copy()
+for column in categorical_columns:
+    df_encoded[column] = df_encoded[column].astype('category').cat.codes
+corr_array = df_encoded.corr().to_numpy()
+min_value, max_value = corr_array.min(), corr_array.max()
+chart = lc.ChartXY(title="Correlation Heatmap (All Variables)", theme=lc.Themes.TurquoiseHexagon)
+heatmap_series = chart.add_heatmap_grid_series(columns=corr_array.shape[1], rows=corr_array.shape[0])
+heatmap_series.set_start(x=0, y=0).set_end(x=corr_array.shape[1], y=corr_array.shape[0])
+heatmap_series.invalidate_intensity_values(corr_array.tolist())
+heatmap_series.set_palette_coloring(
+    steps=[
+        {"value": min_value, "color": lc.Color(0, 0, 0)},
+        {"value": 0.8, "color": lc.Color(255, 165, 0)},
+        {"value": max_value, "color": lc.Color(255, 255, 255)}
+    ],
+    interpolate=True
+)
+variables = df_encoded.columns.tolist()
+for i, label in enumerate(variables):
+    chart.get_default_x_axis().add_custom_tick().set_value(i + 0.5).set_text(label).set_tick_label_rotation(90)
+    chart.get_default_y_axis().add_custom_tick().set_value(i + 0.5).set_text(label)
+chart.open('browser')
+
+
+dashboard = lc.Dashboard(theme=lc.Themes.TurquoiseHexagon, rows=(len(categorical_columns) // 3) + 1, columns=3)
+def create_stacked_bar_chart(data, category, group_by, row_index, column_index):
+    grouped = data.groupby(group_by)
+    stacked_data = [
+        {'subCategory': str(group), 'values': grouped.get_group(group)[category].value_counts().tolist()}
+        for group in grouped.groups.keys()
+    ]
+    unique_categories = data[category].value_counts().index.tolist()
+    chart = dashboard.BarChart(vertical=True, column_index=column_index, row_index=row_index)
+    chart.set_data_stacked(unique_categories, stacked_data)
+    chart.add_legend().add(chart)
+for idx, column in enumerate(categorical_columns):
+    create_stacked_bar_chart(df, column, 'Accident', idx // 3, idx % 3)
+dashboard.open('browser')
+
+
+polar_chart = lc.PolarChart(theme=lc.Themes.TurquoiseHexagon, title="Driver Factors vs Accident Severity")
+angles = np.linspace(0, 360, len(df))
+def add_polar_series(chart, data, color, name):
+    series_data = [{'angle': angle, 'amplitude': amp} for angle, amp in zip(angles, data)]
+    series = chart.add_line_series().set_data(series_data)
+    series.set_name(name)
+    series.set_line_color(color)
+    return series
+add_polar_series(polar_chart, df['Driver_Age'], lc.Color(0, 255, 0), "Driver Age")
+add_polar_series(polar_chart, df['Driver_Experience'], lc.Color(128, 0, 128), "Driver Experience")
+add_polar_series(polar_chart, df['Accident_Severity_Encoded'] * 10, lc.Color(255, 0, 0), "Accident Severity")
+polar_chart.add_legend().add(polar_chart)
+polar_chart.open('browser')
+
+
+
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score, classification_report
+from sklearn.preprocessing import LabelEncoder
+from imblearn.over_sampling import SMOTE
+# Load the dataset
+file_path = 'dataset_traffic_accident_prediction1.csv'
+df = pd.read_csv(file_path)
+# Handle missing values
+numerical_columns = ['Traffic_Density', 'Speed_Limit', 'Number_of_Vehicles',
+                     'Driver_Alcohol', 'Driver_Age', 'Driver_Experience', 'Accident']
+for column in numerical_columns:
+    df[column].fillna(df[column].median(), inplace=True)
+categorical_columns = ['Weather', 'Road_Type', 'Time_of_Day', 'Accident_Severity',
+                       'Road_Condition', 'Vehicle_Type', 'Road_Light_Condition']
+for column in categorical_columns:
+    df[column] = df[column].fillna(df[column].mode()[0])
+# Encode categorical variables using LabelEncoder
+label_encoders = {}
+for column in categorical_columns:
+    le = LabelEncoder()
+    df[column] = le.fit_transform(df[column])
+    label_encoders[column] = le
+# Split the dataset into features (X) and target (y)
+X = df.drop(columns=['Accident'])
+y = df['Accident']
+# Apply SMOTE to balance the dataset
+smote = SMOTE(random_state=42)
+X_resampled, y_resampled = smote.fit_resample(X, y)
+# Split data into training and testing sets
+X_train, X_test, y_train, y_test = train_test_split(X_resampled, y_resampled, test_size=0.2, random_state=42)
+# Train a Random Forest Classifier
+rf_model = RandomForestClassifier(random_state=42)
+rf_model.fit(X_train, y_train)
+# Make predictions on the test set
+y_pred = rf_model.predict(X_test)
+# Evaluate the model
+accuracy = accuracy_score(y_test, y_pred)
+report = classification_report(y_test, y_pred)
+print("Accuracy:", accuracy)
+print("Classification Report:\n", report)
+
