@@ -157,3 +157,138 @@ df_comparison = concat_predictions(df, y_pred, prediction_dates)
 
 # Generating graph of actual vs predicted values
 graph_forecast(df_comparison, prediction_count)
+timesteps_back = range(1,24)
+steps_back, score = [], []
+for steps in timesteps_back:
+
+    # Creating dataset that goes x steps back for each observation
+    values = df['CMILES'].values                                                                                                                                                   
+    data = convert_to_supervised(values, n_in=steps)
+    data = rename_dataframe_supervised(pd.DataFrame(data))
+    
+    # Making predictions based on dataset
+    prediction_count = 12
+    prediction_dates = df['Date'].sort_values()[-prediction_count:]
+    y_pred = stepwise_prediction(data, prediction_count, default_parameters)
+
+    # Calculating MAPE for dataset
+    xgboost_mape = round(mean_absolute_percentage_error(y_pred, 
+                                              df.sort_values(by = ['Date'])[-prediction_count:]['CMILES']),3)
+    steps_back.append(steps)
+    score.append(xgboost_mape)
+
+# Converting scoring to dataframe
+score_df = pd.DataFrame.from_dict({'Timesteps Back': steps_back, 'MAPE': score}).sort_values(by = ['MAPE'])
+
+# Graphing Results
+time_plot = px.line(score_df.sort_values(by=['Timesteps Back']).reset_index(), 
+                    x = 'Timesteps Back', y = 'MAPE', 
+                       title = 'Model Performance versus Timeperiod for Training')
+time_plot.show()
+# splitting into X, Y for training
+X_train, y_train = data.drop(columns = ['t']), data['t']
+
+# Defining parameters to search over
+parameters={'max_depth': range(3,10),
+        'reg_lambda' : [0.2, 0.4, 0.6, 0.8, 1],
+        'n_estimators': range(200,1000, 100),
+        'seed': [42]
+    }
+
+# Create the XGBoost model object
+xgb_model = xgboost.XGBRegressor()
+
+# Create the GridSearchCV object
+grid_search = GridSearchCV(xgb_model, parameters, cv=3, scoring='neg_mean_absolute_percentage_error')
+
+# Fit the GridSearchCV object to the training data
+grid_search.fit(X_train, y_train)
+
+# Printing results
+print("Best hyperparameters: ", grid_search.best_params_)
+print("Best score: ", grid_search.best_score_)
+# Converting to dataframe
+data = rename_dataframe_supervised(pd.DataFrame(data))
+
+best_params = grid_search.best_params_
+prediction_count = 12
+# Making prediction with Xgboost
+y_pred_best = stepwise_prediction(data, prediction_count, best_params)
+# Creating comparison dataset
+df_comparison = concat_predictions(df, y_pred_best, prediction_dates)
+
+# Graphing results
+graph_forecast(df_comparison, prediction_count)
+# Defining helper method
+def crosscorr(datax, datay, lag=0):
+
+    """ Lag-N cross correlation. 
+    Shifted data filled with NaNs 
+
+    Parameters
+    ----------
+    lag : int, default 0
+    datax, datay : pandas.Series objects of equal length
+    Returns
+    ----------
+    crosscorr : float
+    """
+    return datax.corr(datay.shift(lag))
+
+# Loading all data and filtering for western states
+df_all = pd.read_excel(total_path + file_name, sheet_name='Sheet1')
+df_all = df_all[df_all['Region'] =='West'].sort_values(by = ['Date'])
+
+# Now were going to calculate a correlation matrix between lag 1-6
+corr_matrix = []
+impactful_vars = []
+corr_dict = {}
+lags = [1,2,3,5,6]
+western_states = df_all['State'].drop_duplicates().to_list()
+for state in western_states:
+    var_cor = []
+    x = df_all[df_all['State']== state].reset_index()['CMILES']
+    y = df_all[df_all['State']=='Oregon'].reset_index()['CMILES']
+    # Calculating correlation between two states traffics at each lag value
+    for lag in lags:
+        var_cor.append(round(crosscorr(x,y, lag = lag),2))
+
+    # Adding results
+    corr_matrix.append(var_cor)
+    impactful_vars.append(state)
+    corr_dict[state] = var_cor
+fig = px.imshow(corr_matrix,
+                labels=dict(x="Lag", y="Variable", color="Pearson Correlation"),
+                x=lags,
+                y=impactful_vars,
+                text_auto=True,
+                title= "Traffic Correlation Between Western States and Oregon"
+               )
+fig.show()
+# Filtering for just oregon + Idaho
+df_multi = df_all[df_all['State'].isin(['Oregon', 'Idaho'])]
+
+# Returning values CMILE values for both states
+oregon_vals = df_multi[df_multi['State'] == 'Oregon']['CMILES'].values
+idaho_vales = df_multi[df_multi['State'] == 'Idaho']['CMILES'].values
+
+# Transforming to time series                                                                                                                                                       
+data_oregon = convert_to_supervised(oregon_vals, n_in=n_in_best)
+data_idaho = convert_to_supervised(idaho_vales, n_in=6)
+
+# converting to dataframes
+data_oregon_df = pd.DataFrame(data_oregon)
+data_idaho_df = pd.DataFrame(data_idaho)
+
+# Relabeling dataframes
+data_oregon_df = rename_dataframe_supervised(data_oregon_df, "Oregon")
+data_idaho_df = rename_dataframe_supervised(data_idaho_df, 'Idaho').drop(columns = ['t'])
+
+# Joining together
+combined_df = pd.merge(data_oregon_df, data_idaho_df , left_index=True, right_index=True)
+combined_df.head(10)
+# ow performing same stepwise prediction with best parameters and the new dataset
+prediction_count = 12
+y_pred_combined = stepwise_prediction(combined_df, prediction_count, best_params)
+# Creating comparison dataset
+df_comparison = concat_predictions(df, y_pred_combined, prediction_dates)
