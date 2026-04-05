@@ -67,5 +67,54 @@ data = convert_to_supervised(values, n_in=6)
 # Converting to dataframe
 data = rename_dataframe_supervised(pd.DataFrame(data))
 data.head(10)
+def forecast(train, testX, parameters):
+
+  '''Fit xgboost model based on histroric data and 
+    making prediction for next timestamp'''
+
+   x_train, y_train = train.drop(columns = ['t']), train['t']
+   # fitting model
+   model = xgboost.XGBRegressor(objective='reg:squarederror', 
+                              max_depth = parameters['max_depth'])
+   model.fit(x_train, y_train)
+
+   # making a prediction
+   y_predicted = model.predict(testX)
+   return y_predicted[0]
+
+def stepwise_prediction(data, prediction_count, parameters):
+ 
+ '''Iterates through timeseries dataframe, fitting a new model for data up to
+ time t and making prediction for time t+1'''
+ 
+ predictions = list()
+
+ # Iterating through dataset one timestep at a time
+ for i in range(prediction_count):
+   
+   steps_back = prediction_count-i
+   # Creating test/train sets with time based split
+   train, test = train_test_split(data, steps_back)
+
+   # Creating new test and train dataset for each timestep
+   testX, testy = test.drop(columns = ['t']), test['t']
+   # Fitting model and making prediction for next step
+   y_pred = forecast(train, testX, parameters)
+   # store forecast in list of predictions
+   predictions.append(y_pred)
+
+ return  predictions
+# Defining default parameters
+default_parameters = {'max_depth': 4,
+        'reg_lambda' : 1,
+        'n_estimators': 200,
+        'seed': 42
+    }
+
+# Setting test dataset size
+prediction_count = 12
+prediction_dates = df['Date'].sort_values()[-prediction_count:]
+# Making prediction with Xgboost
+y_pred = stepwise_prediction(data, prediction_count, default_parameters)
 
 
