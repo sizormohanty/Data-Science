@@ -2,7 +2,7 @@
 /***********************************************************************************
 FILE NAME:              Daily Check if AM file was created.
 CREATION DATE:          09/12/2016
-AUTHOR:                 Sizor/Nancy Crossen
+AUTHOR:                 Sizor Mohanty/Nancy Crossen
 PURPOSE:                This module will check if the AM repricing job was created successfully.  If not, it will
                         send an email with the reco file numbers from the PM run of the prior day.
 3/22/2017               Add code for the milestone email   .
