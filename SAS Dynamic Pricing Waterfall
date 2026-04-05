@@ -1,7 +1,7 @@
 
-/*SNM - 7/7/2016 revized code for inventory bucket calculation
+/*SNM - 7/7/2016 revised code for inventory bucket calculation
 		Added check if there is a mismatch in the waterfall counts, then send an email*/
-/*SNM - 7/19/2016 revized code to use SUM function instead of +
+/*SNM - 7/19/2016 revised code to use SUM function instead of +
 	This should take care of instances where . instead of 0 */
 
 proc sql;
