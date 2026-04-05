@@ -14,5 +14,11 @@ df = df.sort_values(by = ['Date']).reset_index()
 fig = px.scatter(df.reindex(), x="Date", y="CMILES", trendline="lowess",trendline_options=dict(frac=0.1),
                   title = 'Miles Driven by Time - Oregon')
 fig.show()
+# Replacing outlier January 2023 value
+mean_val = df[(df['Month'] == 'January') &
+              (df['Year'] != 2023)]['CMILES'].mean()
+df['CMILES'] = np.where(df['CMILES'] <1000, mean_val, df['CMILES'])
+def convert_to_supervised(data, n_in=1, n_out=1, dropnan=True):
+
 
 
