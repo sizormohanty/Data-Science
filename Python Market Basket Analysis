@@ -366,6 +366,116 @@ signs = sign_columns.sum(axis = 1) >= 1.0
 print('Share of Signs: %.2f' % signs.mean())
 
 
+## defining an aggregate function
+
+def aggregate(item):
+    # Select the column headers for sign items
+    item_headers = []
+    for i in onehot.columns:
+        wrd_lst = convert_str(str(i).lower())
+        if item in wrd_lst:
+            item_headers.append(i)
+
+    # Select columns of sign items
+    item_columns = onehot[item_headers]
+
+    # Return category of aggregated items
+    return item_columns.sum(axis = 1) >= 1.0
+
+# Aggregate items for the bags, boxes, and candles categories  
+bags = aggregate('bag')
+boxes = aggregate('box')
+candles = aggregate('candle')
+
+print('Share of Bags: %.2f' % bags.mean())
+print('Share of Boxes: %.2f' % boxes.mean())
+print('Share of Candles: %.2f' % candles.mean())
+
+## Apriori Algorithm
+
+# identifying frequent data sets
+# Import apriori from mlxtend
+from mlxtend.frequent_patterns import apriori
+
+# Compute frequent itemsets using the Apriori algorithm
+frequent_itemsets = apriori(onehot, 
+                            min_support = 0.05, 
+                            max_len = 3, 
+                            use_colnames = True)
+
+# Print a preview of the frequent itemsets
+frequent_itemsets.head()
+
+# selecting support threshold
+# Import apriori from mlxtend
+from mlxtend.frequent_patterns import apriori
+
+# Compute frequent itemsets using a support of 0.04 and length of 3
+frequent_itemsets_1 = apriori(onehot, min_support = 0.04, 
+                            max_len = 3, use_colnames = True)
+
+# Compute frequent itemsets using a support of 0.05 and length of 3
+frequent_itemsets_2 = apriori(onehot, min_support = 0.05, 
+                            max_len = 3, use_colnames = True)
+
+# Print the number of freqeuent itemsets
+print(len(frequent_itemsets_1), len(frequent_itemsets_2))
+
+# Genrating Association rules
+# Import the association rule function from mlxtend
+from mlxtend.frequent_patterns import association_rules
+
+# Compute all association rules for frequent_itemsets_1
+rules_1 = association_rules(frequent_itemsets_1, 
+                            metric = "support", 
+                            min_threshold = 0.001)
+
+# Compute all association rules for frequent_itemsets_2
+rules_2 = association_rules(frequent_itemsets_2, 
+                            metric = "support", 
+                            min_threshold = 0.002)
+
+# Print the number of association rules generated
+print(len(rules_1), len(rules_2))
+
+# pruning with lift
+# Import the association rules function
+from mlxtend.frequent_patterns import association_rules
+
+# Compute frequent itemsets using the Apriori algorithm
+frequent_itemsets = apriori(onehot, min_support = 0.03, 
+                            max_len = 2, use_colnames = True)
+
+# Compute all association rules for frequent_itemsets
+rules = association_rules(frequent_itemsets, 
+                            metric = "lift", 
+                            min_threshold = 1.0)
+
+# Print association rules
+rules.info()
+rules.head()
+
+## Pruning with confidence
+# Import the association rules function
+from mlxtend.frequent_patterns import apriori, association_rules
+
+# Compute frequent itemsets using the Apriori algorithm
+frequent_itemsets = apriori(onehot, min_support = 0.03, 
+                            max_len = 2, use_colnames = True)
+
+# Compute all association rules using confidence
+rules = association_rules(frequent_itemsets, 
+                            metric = "confidence", 
+                            min_threshold = 0.4)
+
+# Print association rules
+rules.info()
+rules.head()
+
+
+
+
+
 
 
 
