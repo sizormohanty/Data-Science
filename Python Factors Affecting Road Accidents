@@ -16,6 +16,7 @@ df['time_of_day_index'] = df['Time_of_Day'].map(time_of_day_mapping)
 numerical_columns = ['Traffic_Density', 'Speed_Limit', 'Number_of_Vehicles', 'Driver_Age', 'Driver_Experience', 'Accident']
 processed_data = {col: df.groupby('time_of_day_index')[col].mean().reset_index() for col in numerical_columns}
 
+
 # Initialize chart and axes
 chart = lc.ChartXY(theme=lc.Themes.TurquoiseHexagon, title='Metrics and Related Accidents Across Time of Day')
 legend = chart.add_legend()
