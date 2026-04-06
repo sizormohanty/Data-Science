@@ -1,0 +1,320 @@
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+from mlxtend.frequent_patterns import apriori
+from mlxtend.frequent_patterns import association_rules
+sns.set(style="darkgrid", color_codes=True)
+pd.set_option('display.max_columns', 75)
+data = pd.read_csv('Market_Basket.csv', header = None)
+data.info()
+data.head()
+data.describe()
+#Exploratory Data Analysis
+color = plt.cm.rainbow(np.linspace(0, 1, 40))
+data[0].value_counts().head(40).plot.bar(color = color, figsize=(13,5))
+plt.title('frequency of most popular items', fontsize = 20)
+plt.xticks(rotation = 90 )
+plt.grid()
+plt.show()
+import networkx as nx
+data['food'] = 'Food'
+food = data.truncate(before = -1, after = 15)
+food = nx.from_pandas_edgelist(food, source = 'food', target = 0, edge_attr = True)
+import warnings
+warnings.filterwarnings('ignore')
+
+plt.rcParams['figure.figsize'] = (13, 13)
+pos = nx.spring_layout(food)
+color = plt.cm.Set1(np.linspace(0, 15, 1))
+nx.draw_networkx_nodes(food, pos, node_size = 15000, node_color = color)
+nx.draw_networkx_edges(food, pos, width = 3, alpha = 0.6, edge_color = 'black')
+nx.draw_networkx_labels(food, pos, font_size = 20, font_family = 'sans-serif')
+plt.axis('off')
+plt.grid()
+plt.title('Top 15 First Choices', fontsize = 20)
+plt.show()
+# Getting the list of transactions from the dataset
+transactions = []
+for i in range(0, len(data)):
+    transactions.append([str(data.values[i,j]) for j in range(0, len(data.columns))])
+
+transactions[:1]
+from itertools import permutations
+
+# Extract unique items.
+flattened = [item for transaction in transactions for item in transaction]
+items = list(set(flattened))
+print('# of items:',len(items))
+print(list(items))
+if 'nan' in items: items.remove('nan')
+print(list(items))
+# Compute and print rules.
+rules = list(permutations(items, 2))
+print('# of rules:',len(rules))
+print(rules[:5])
+# one hot - encoding transaction
+# Import the transaction encoder function from mlxtend
+from mlxtend.preprocessing import TransactionEncoder
+
+# Instantiate transaction encoder and identify unique items
+encoder = TransactionEncoder().fit(transactions)
+
+# One-hot encode transactions
+onehot = encoder.transform(transactions)
+
+# Convert one-hot encoded data to DataFrame
+onehot = pd.DataFrame(onehot, columns = encoder.columns_).drop('nan', axis=1)
+
+# Print the one-hot encoded transaction dataset
+onehot.head()
+# Compute the support
+support = onehot.mean()
+support = pd.DataFrame(support, columns=['support']).sort_values('support',ascending=False)
+
+# Print the support
+support.head()
+support.describe()
+# recommending food with support
+# Compute support for burgers and french fries
+supportBF = np.logical_and(onehot['burgers'], onehot['french fries']).mean()
+
+# Compute support for burgers and mineral water
+supportBM = np.logical_and(onehot['burgers'], onehot['mineral water']).mean()
+
+# Compute support for french fries and mineral water
+supportFM = np.logical_and(onehot['french fries'], onehot['mineral water']).mean()
+
+# Print support values
+print("burgers and french fries: %.2f" % supportBF)
+print("burgers and mineral water: %.2f" % supportBM)
+print("french fries and mineral water: %.2f" % supportFM)
+#computing support
+# Add a mineral water+french fries column to the DataFrame onehot
+onehot['mineral water+french fries'] = np.logical_and(onehot['mineral water'], onehot['french fries'])
+
+# Compute the support
+support = onehot.mean()
+val = support.loc['mineral water+french fries']
+
+# Print the support values
+print(f'mineral water+french fries support = {val}')
+
+# refining support with confidence
+# Compute support for mineral water and french fries
+supportMF = np.logical_and(onehot['mineral water'], onehot['french fries']).mean()
+
+# Compute support for mineral water
+supportM = onehot['mineral water'].mean()
+
+# Compute support for french fries
+supportF = onehot['french fries'].mean()
+
+# Compute confidence for both rules
+confidenceMM = supportMF / supportM
+confidenceMF = supportMF / supportF
+
+# Print results
+print('mineral water = {0:.2f}, french fries = {1:.2f}'.format(confidenceMM, confidenceMF))
+
+
+# further refinement with lift
+# Compute lift
+lift = supportMF / (supportM * supportF)
+
+# Print lift
+print("Lift: %.2f" % lift)
+
+#Comnputing conviction
+# Compute support for burgers AND french fries
+supportBF = np.logical_and(onehot['burgers'], onehot['french fries']).mean()
+
+# Compute support for burgers
+supportB = onehot['burgers'].mean()
+
+# Compute support for NOT french fries
+supportnF = 1.0 - onehot['french fries'].mean()
+
+# Compute support for burgers and NOT french fries
+supportBnF = supportB - supportBF
+
+# Compute and print conviction for burgers -> french fries
+conviction = supportB * supportnF / supportBnF
+print("Conviction: %.2f" % conviction)
+
+# compute conviction with a function
+def conviction(antecedent, consequent):
+    # Compute support for antecedent AND consequent
+    supportAC = np.logical_and(antecedent, consequent).mean()
+
+    # Compute support for antecedent
+    supportA = antecedent.mean()
+
+    # Compute support for NOT consequent
+    supportnC = 1.0 - consequent.mean()
+
+    # Compute support for antecedent and NOT consequent
+    supportAnC = supportA - supportAC
+
+    # Return conviction
+    return supportA * supportnC / supportAnC
+
+# computing leverage with function
+def leverage(antecedent, consequent):
+    # Compute support for antecedent AND consequent
+    supportAB = np.logical_and(antecedent, consequent).mean()
+
+    # Compute support for antecedent
+    supportA = antecedent.mean()
+
+    # Compute support for consequent
+    supportB = consequent.mean()
+
+    # Return leverage
+    return supportAB - supportB * supportA
+
+# promoting food with conviction
+# Compute conviction for burgers -> french fries and french fries -> burgers
+convictionBF = conviction(onehot['burgers'], onehot['french fries'])
+convictionFB = conviction(onehot['french fries'], onehot['burgers'])
+
+# Compute conviction for burgers -> mineral water and mineral water -> burgers
+convictionBM = conviction(onehot['burgers'], onehot['mineral water'])
+convictionMB = conviction(onehot['mineral water'], onehot['burgers'])
+
+# Compute conviction for french fries -> mineral water and mineral water -> french fries
+convictionFM = conviction(onehot['french fries'], onehot['mineral water'])
+convictionMF = conviction(onehot['mineral water'], onehot['french fries'])
+
+# Print results
+print('french fries -> burgers: ', convictionFB)
+print('burgers -> french fries: ', convictionBF)
+
+# computing association and dissociation
+# Compute the support of burgers and french fries
+supportT = onehot['burgers'].mean()
+supportP = onehot['french fries'].mean()
+
+# Compute the support of both food items
+supportTP = np.logical_and(onehot['burgers'], onehot['french fries']).mean()
+
+# Complete the expressions for the numerator and denominator
+numerator = supportTP - supportT*supportP
+denominator = max(supportTP*(1-supportT), supportT*(supportP-supportTP))
+
+# Compute and print Zhang's metric
+zhang = numerator / denominator
+print(zhang)
+
+# Define a function to compute Zhang's metric
+def zhang(antecedent, consequent):
+    # Compute the support of each book
+    supportA = antecedent.mean()
+    supportC = consequent.mean()
+
+    # Compute the support of both books
+    supportAC = np.logical_and(antecedent, consequent).mean()
+
+    # Complete the expressions for the numerator and denominator
+    numerator = supportAC - supportA*supportC
+    denominator = max(supportAC*(1-supportA), supportA*(supportC-supportAC))
+
+    # Return Zhang's metric
+    return numerator / denominator
+
+## Applying Zhang's metric
+
+# Create rules DataFrame
+rules_ = pd.DataFrame(rules, columns=['antecedents','consequents'])
+
+# Define an empty list for metrics
+zhangs, conv, lev, antec_supp, cons_supp, suppt, conf, lft = [], [], [], [], [], [], [], []
+
+# Loop over lists in itemsets
+for itemset in rules:
+    # Extract the antecedent and consequent columns
+    antecedent = onehot[itemset[0]]
+    consequent = onehot[itemset[1]]
+    
+    antecedent_support = onehot[itemset[0]].mean()
+    consequent_support = onehot[itemset[1]].mean()
+    support = np.logical_and(onehot[itemset[0]], onehot[itemset[1]]).mean()
+    confidence = support / antecedent_support
+    lift = support / (antecedent_support * consequent_support)
+    
+    # Complete metrics and append it to the list
+    antec_supp.append(antecedent_support)
+    cons_supp.append(consequent_support)
+    suppt.append(support)
+    conf.append(confidence)
+    lft.append(lift)
+    lev.append(leverage(antecedent, consequent))
+    conv.append(conviction(antecedent, consequent))
+    zhangs.append(zhang(antecedent, consequent))
+    
+# Store results
+rules_['antecedent support'] = antec_supp
+rules_['consequent support'] = cons_supp
+rules_['support'] = suppt
+rules_['confidence'] = conf
+rules_['lift'] = lft
+rules_['leverage'] = lev
+rules_['conviction'] = conv
+rules_['zhang'] = zhangs
+
+# Print results
+rules_.sort_values('zhang',ascending=False).head()
+
+rules_.describe()
+
+rules_.info()
+# Select the subset of rules with antecedent support greater than 0.05
+rules_filtered = rules_[rules_['antecedent support'] > 0.05]
+
+# Select the subset of rules with a consequent support greater than 0.01
+rules_filtered = rules_[rules_['consequent support'] > 0.01]
+
+## Filtering with support and conviction
+# Select the subset of rules with a conviction greater than 1.01
+rules_filtered = rules_[rules_['conviction'] > 1.01]
+
+# Select the subset of rules with a lift greater than 1.0
+rules_filtered = rules_[rules_['lift'] > 1.0]
+
+# Print remaining rules
+print(f'# of rules = {len(rules_)}')
+print(f'# of rules after filtering = {len(rules_filtered)}')
+print(rules_filtered.head())
+
+
+## Using multimetric filtering to promote items
+# Set the threshold for Zhang's rule to 0.65
+rules_filtered = rules_filtered[rules_filtered['zhang'] > 0.65]
+
+# Print rule
+print(f'# of rules after filtering = {8598 - len(rules_filtered)}')
+print(rules_filtered.head())
+
+##Aggregation
+
+# Novelty gift idea
+url = 'https://assets.datacamp.com/production/repositories/5654/datasets/5a3bc2ebccb77684a6d8a9f3fbec23fe04d4e3aa/online_retail.csv'
+gifts = pd.read_csv(url)
+gifts.info()
+gifts.head()
+
+# Stripping extra spaces in the description 
+gifts['Description'] = gifts['Description'].str.strip() 
+
+# Dropping the rows without any invoice number 
+gifts.dropna(subset =['InvoiceNo'], inplace = True) 
+gifts['InvoiceNo'] = gifts['InvoiceNo'].astype('str') 
+
+# Dropping all transactions which were done on credit 
+gifts = gifts[~gifts['InvoiceNo'].str.contains('C')]
+
+
+
+
+
+
