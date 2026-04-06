@@ -472,6 +472,119 @@ rules = association_rules(frequent_itemsets,
 rules.info()
 rules.head()
 
+## Advanced apriori cross promotions
+# Aggregate items
+signs = aggregate('sign')
+
+# Concatenate aggregated items into 1 DataFrame
+aggregated = pd.concat([bags, boxes, candles, signs],axis=1)
+aggregated.columns = ['bag','box','candle','sign']
+
+# Apply the apriori algorithm with a minimum support of 0.04
+frequent_itemsets = apriori(aggregated, min_support = 0.04, use_colnames = True)
+
+# Generate the initial set of rules using a minimum support of 0.01
+rules = association_rules(frequent_itemsets, 
+                          metric = "support", min_threshold = 0.01)
+
+# Set minimum antecedent support to 0.35
+rules = rules[rules['antecedent support'] > 0.35]
+
+# Set maximum consequent support to 0.35
+rules = rules[rules['consequent support'] < 0.35]
+
+# Print the remaining rules
+rules.info()
+rules.head()
+
+## Applying Zhang's Rule
+
+# Funtion to compute Zhang's rule from mlxtend association_rules output
+def zhangs_rule(rules):
+    PAB = rules['support'].copy()
+    PA = rules['antecedent support'].copy()
+    PB = rules['consequent support'].copy()
+    NUMERATOR = PAB - PA*PB
+    DENOMINATOR = np.max((PAB*(1-PA).values,PA*(PB-PAB).values), axis = 0)
+    return NUMERATOR / DENOMINATOR
+
+# Generate the initial set of rules using a minimum lift of 1.00
+rules = association_rules(frequent_itemsets, metric = "lift", min_threshold = 1.00)
+
+# Set antecedent support to 0.04
+rules = rules[rules['antecedent support'] > 0.04]
+
+# Set consequent support to 0.04
+rules = rules[rules['consequent support'] > 0.04]
+
+# Compute Zhang's rule
+rules['zhang'] = zhangs_rule(rules)
+
+# Set the lower bound for Zhang's rule to 0.5
+rules = rules[rules['zhang'] > 0.5]
+rules[['antecedents', 'consequents']].info()
+rules.tail()
+
+## Advanced filtering with multiple metrics
+# Apply the Apriori algorithm with a minimum support threshold of 0.04
+frequent_itemsets = apriori(onehot, min_support = 0.04, use_colnames = True)
+
+# Recover association rules using a minium support threshold of 0.01
+rules = association_rules(frequent_itemsets, metric = 'support', min_threshold = 0.01)
+
+# Apply a 0.002 antecedent support threshold, 0.01 confidence threshold, and 2.50 lift threshold
+filtered_rules = rules[(rules['antecedent support'] > 0.002) &
+                       (rules['consequent support'] > 0.01) &
+                       (rules['confidence'] > 0.60) &
+                       (rules['lift'] > 2.50)]
+
+# Print remaining rule
+filtered_rules[['antecedents','consequents']]
+
+## Movielens dataset
+movie_raitings = pd.read_csv('movie_raitings.csv', index_col = 'Unnamed: 0')
+movie_raitings = movie_raitings[movie_raitings['rating'] >= 4.0]
+movie_raitings.info()
+movie_raitings.head()
+# Recover unique user IDs.
+user_id = movie_raitings['userId'].unique()
+
+# Create library of  movies for each user.
+libraries = [list(movie_raitings[movie_raitings['userId'] == u].title) for u in user_id]
+
+# Print example library.
+print(libraries[0])
+
+# Instantiate transaction encoder.
+encoder = TransactionEncoder()
+
+# One-hot encode libraries.
+onehot = encoder.fit(libraries).transform(libraries)
+
+# Use movie titles as column headers.
+onehot = pd.DataFrame(onehot, columns = encoder.columns_)
+
+# Print onehot header.
+onehot.head()
+
+## visualising dataset
+
+# Apply the apriori algorithm
+frequent_itemsets = apriori(onehot, min_support=0.15, use_colnames=True, max_len=2)
+
+# Recover the association rules
+rules = association_rules(frequent_itemsets)
+
+rules.info()
+rules.head()
+
+
+
+
+
+
+
+
 
 
 
