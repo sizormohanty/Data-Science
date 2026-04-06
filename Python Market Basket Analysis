@@ -313,6 +313,59 @@ gifts['InvoiceNo'] = gifts['InvoiceNo'].astype('str')
 # Dropping all transactions which were done on credit 
 gifts = gifts[~gifts['InvoiceNo'].str.contains('C')]
 
+## Exploratory Data Analysis
+
+# Print number of transactions.
+print(len(gifts['InvoiceNo'].unique()))
+
+# Print number of items.
+print(len(gifts['Description'].unique()))
+
+# Recover unique InvoiceNo's.
+InvoiceNo = gifts['InvoiceNo'].unique()
+
+# Create basket of items for each transaction.
+Transactions = [list(gifts[gifts['InvoiceNo'] == u].Description.astype(str)) for u in InvoiceNo]
+
+# Print example transaction.
+Transactions[0]
+
+# Instantiate transaction encoder.
+encoder = TransactionEncoder()
+
+# One-hot encode transactions.
+onehot = encoder.fit(Transactions).transform(Transactions)
+
+# Use unique items as column headers.
+onehot = pd.DataFrame(onehot, columns = encoder.columns_).drop('nan', axis=1)
+
+# Print onehot header.
+onehot.head()
+
+## Perform aggregation
+
+# Convert words to a list of words
+def convert_str(string):
+    lst = list(string.split(' '))
+    return lst
+
+# Select the column headers for sign items
+sign_headers = []
+for i in onehot.columns:
+    wrd_lst = convert_str(str(i).lower())
+    if 'sign' in wrd_lst:
+        sign_headers.append(i)
+
+# Select columns of sign items
+sign_columns = onehot[sign_headers]
+
+# Perform aggregation of sign items into sign category
+signs = sign_columns.sum(axis = 1) >= 1.0
+
+# Print support for signs
+print('Share of Signs: %.2f' % signs.mean())
+
+
 
 
 
