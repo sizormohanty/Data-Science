@@ -135,5 +135,22 @@ plt.xlabel('learner')
 _ = plt.ylabel('RMSE')
 
 ## Inference
+plr_summary = pd.concat((summary_plr_lin_reg,
+                         summary_plr_lasso,
+                         summary_plr_forest))
+plr_summary.index = ['linear regression', 'lasso', 'forest']
+plr_summary[['coef', '2.5 %', '97.5 %']]
+
+errors = np.full((2, plr_summary.shape[0]), np.nan)
+errors[0, :] = plr_summary['coef'] - plr_summary['2.5 %']
+errors[1, :] = plr_summary['97.5 %'] - plr_summary['coef']
+plt.errorbar(plr_summary.index, plr_summary.coef, fmt='o', yerr=errors)
+plt.axhline(y=0, color='gray')
+plt.ylim([-3, 0.1])
+
+plt.title('Partially Linear Regression Model (PLR)')
+plt.xlabel('ML method')
+_ =  plt.ylabel('Coefficients and 95%-CI')
+
 
 
