@@ -1,0 +1,139 @@
+# Load required modules
+from sklearn import linear_model
+from sklearn.pipeline import Pipeline
+from sklearn.compose import ColumnTransformer
+from sklearn.preprocessing import OneHotEncoder, StandardScaler, RobustScaler
+from sklearn.feature_extraction.text import CountVectorizer
+import sklearn.preprocessing
+import pandas as pd, numpy as np
+from datetime import datetime, date
+from matplotlib import pyplot as plt
+import seaborn as sns
+import doubleml as dml
+from sklearn.pipeline import make_pipeline
+from sklearn.linear_model import LinearRegression
+from sklearn.linear_model import LassoCV
+from sklearn.ensemble import RandomForestRegressor
+import numpy as np
+# Load example data set
+url = 'https://raw.githubusercontent.com/DoubleML/doubleml-docs/master/doc/examples/data/orig_demand_data_example.csv'
+data_example = pd.read_csv(url)
+data_example
+url2 = 'https://raw.githubusercontent.com/DoubleML/doubleml-docs/master/doc/examples/data/elasticity_subset.csv'
+demand_data = pd.read_csv(url2)
+print(demand_data.columns)
+# Print dimensions of data set
+print(demand_data.shape)
+# Glimpse at first rows of data set
+demand_data.head()
+feature_names = list(demand_data.columns[4:(demand_data.shape[1]-2),])
+data_dml = dml.DoubleMLData(demand_data,
+                            y_col = 'dLnQ',
+                            d_cols = 'dLnP',
+                            x_cols = feature_names)
+print(data_dml)
+ml_l_lin_reg = LinearRegression()
+ml_m_lin_reg = LinearRegression()
+Cs = 0.0001*np.logspace(0, 4, 10)
+ml_l_lasso = make_pipeline(StandardScaler(), LassoCV(cv=5, max_iter=10000,
+                                                     n_jobs = -1))
+ml_m_lasso = make_pipeline(StandardScaler(), LassoCV(cv=5, max_iter=10000,
+                                                     n_jobs = -1))
+ml_l_forest = RandomForestRegressor(n_estimators=50,
+                                    min_samples_leaf=3,
+                                    n_jobs=-1, verbose=0)
+ml_m_forest = RandomForestRegressor(n_estimators=50,
+                                    min_samples_leaf=3,
+                                    n_jobs=-1, verbose=0)
+## DML Specifications
+np.random.seed(123)
+dml_plr_lin_reg = dml.DoubleMLPLR(data_dml,
+                                  ml_l = ml_l_lin_reg,
+                                  ml_m = ml_m_lin_reg)
+np.random.seed(123)
+dml_plr_lasso = dml.DoubleMLPLR(data_dml,
+                                ml_l = ml_l_lasso,
+                                ml_m = ml_m_lasso)
+np.random.seed(123)
+dml_plr_forest = dml.DoubleMLPLR(data_dml,
+                                 ml_l = ml_l_forest,
+                                 ml_m = ml_m_forest)
+## Estimation
+dml_plr_lin_reg.fit(store_predictions = True)
+summary_plr_lin_reg = dml_plr_lin_reg.summary
+summary_plr_lin_reg
+dml_plr_lasso.fit(store_predictions = True)
+summary_plr_lasso = dml_plr_lasso.summary
+summary_plr_lasso
+dml_plr_forest.fit(store_predictions = True)
+summary_plr_forest = dml_plr_forest.summary
+summary_plr_forest
+from sklearn.metrics import mean_squared_error
+
+def pred_acc_plr(DoubleML, nuis):
+    """
+    A function to calculate prediction accuracy values for every repetition
+    of a Double Machine Learning model using PLR, DoubleMLPLR
+    
+    ...
+    
+    Parameters
+    ----------
+    DoubleML : doubleml.double_ml_plr.DoubleMLPLR
+        The PLR Double Machine Learning model
+    nuis : str
+        Indicates nuisance component for evaluation of RMSE, either `'ml_l'` or `ml_m`.
+    """
+    
+    # export data, fitted coefficient and predictions of the DoubleML model
+    y = DoubleML._dml_data.y
+    d = DoubleML._dml_data.d
+    theta = DoubleML.coef
+    ml_nuis = DoubleML.predictions.get(nuis)
+    
+    # dimensions of prediction array
+    h = ml_nuis.shape[0]
+    export_pred_array = np.zeros(h)      
+    
+    if nuis == 'ml_l':
+        for j in range(h):
+            export_pred_array[j] = theta*d[j] + ml_nuis[j]
+    
+    elif nuis == 'ml_m':
+        for j in range(h):
+            export_pred_array[j] = ml_nuis[j]
+
+    rmse = mean_squared_error(y, export_pred_array, squared=False)
+    
+    return rmse
+
+rmse_lin_reg_ml_l = pred_acc_plr(dml_plr_lin_reg, 'ml_l')
+rmse_lin_reg_ml_m = pred_acc_plr(dml_plr_lin_reg, 'ml_m')
+
+rmse_lasso_ml_l = pred_acc_plr(dml_plr_lasso, 'ml_l')
+rmse_lasso_ml_m = pred_acc_plr(dml_plr_lasso, 'ml_m')
+
+rmse_forest_ml_l = pred_acc_plr(dml_plr_forest, 'ml_l')
+rmse_forest_ml_m = pred_acc_plr(dml_plr_forest, 'ml_m')
+
+plr_rmse_index = ['regression','lasso', 'forest']
+plr_rmse = pd.DataFrame([[rmse_lin_reg_ml_l, rmse_lin_reg_ml_m],
+                         [rmse_lasso_ml_l, rmse_lasso_ml_m],
+                         [rmse_forest_ml_l, rmse_forest_ml_m]],
+                        index=plr_rmse_index,
+                        columns=['ml_l', 'ml_m'])
+plr_rmse.round(3)
+
+plt.scatter(x = plr_rmse_index, y= plr_rmse['ml_l'])
+plt.title('RMSE, ml_l')
+plt.xlabel('learner')
+_ = plt.ylabel('RMSE')
+
+plt.scatter(x = plr_rmse_index, y= plr_rmse['ml_m'])
+plt.title('RMSE, ml_m')
+plt.xlabel('learner')
+_ = plt.ylabel('RMSE')
+
+## Inference
+
+
