@@ -10,6 +10,7 @@ proc sql;
     group by customer_id;
 quit;
 
+
 /* 2. Rank Metrics into Quintiles (1-5) */
 proc rank data=customer_rfm out=rfm_scored groups=5 descending;
     var recency;
