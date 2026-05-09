@@ -136,7 +136,7 @@ trainer = Trainer(
 trainer.train()
 results = trainer.evaluate()
 print(f"Test Accuracy: {results['eval_accuracy']:.2f}")
-# make nferences from the tuned model
+# make references from the tuned model
 inputs = tokenizer("This movie was fantastic!", return_tensors="pt")
 outputs = model(**inputs)
 predictions = torch.argmax(outputs.logits, dim=-1)
