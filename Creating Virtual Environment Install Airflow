@@ -7,3 +7,5 @@ Installation of Apache Airflow: Udemy: The Data Engineer Bootcamp 2026 Lecture 9
 #5 venv\scripts\activate....This actiates the virtual environment
 (venv) PS C:\Users\jsata>....this shows that venv has been created
 #6 pip install apache-airflow...This installs Apache airflow
+#7 to update PIP run this command
+python.exe -m pip install --upgrade pip
