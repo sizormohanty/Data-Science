@@ -1,2 +1,8 @@
 Source is https://www.youtube.com/watch?v=N2Axkw00Flg
 
+#1 Go to windows power shell
+#2 type python -m venv venv
+#3 venv\scripts\activate....this may give an error about permissions
+#4 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass....This creates the virtual environment
+#5 venv\scripts\activate....This actiates the virtual environment
+(venv) PS C:\Users\jsata>....this shows that venv has been created
