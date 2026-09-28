@@ -5,7 +5,7 @@ Connecting Business with Technology
 -----------------------------------
 
 
-I have been helping businesses grow exponentially by connecting Technology, and Statistics with marketing / Finance/ Supply Chain for the last 12 yrs.
+I have been helping businesses grow exponentially by connecting Technology, and Statistics with Marketing / Finance/ Supply Chain for the last 12 yrs.
 
 * 🌍  I'm based in Omaha
 * ✉️  You can contact me at [sizorce98@yahoo.co.in](mailto:sizorce98@yahoo.co.in)
